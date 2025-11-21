@@ -40,8 +40,8 @@ import {
   getSimulation,
   loadSimulationTree,
 } from "@/services/scenarioService"
-import type { DialogueNode, ResponseOption } from "@/types/scenario"
 import type { TranscriptionResponse } from "@/types/api"
+import type { DialogueNode, ResponseOption } from "@/types/scenario"
 import { encodeWAV } from "@/utils/audioEncoding"
 import {
   buildDialogueTreeFromMessages,

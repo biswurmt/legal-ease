@@ -19,7 +19,10 @@ import { useEffect, useState } from "react"
 import { FiTrash2 } from "react-icons/fi"
 import { DeleteConfirmationDialog } from "@/components/Common/DeleteConfirmationDialog"
 import { toaster } from "@/components/ui/toaster"
-import type { TranscriptionResponse, CaseWithSimulationsResponse } from "@/types/api"
+import type {
+  CaseWithSimulationsResponse,
+  TranscriptionResponse,
+} from "@/types/api"
 import { encodeWAV } from "@/utils/audioEncoding"
 import { DefaultService } from "../client"
 
