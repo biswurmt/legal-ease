@@ -19,6 +19,7 @@ import { useEffect, useState } from "react"
 import { FiTrash2 } from "react-icons/fi"
 import { DeleteConfirmationDialog } from "@/components/Common/DeleteConfirmationDialog"
 import { toaster } from "@/components/ui/toaster"
+import type { TranscriptionResponse, CaseWithSimulationsResponse } from "@/types/api"
 import { encodeWAV } from "@/utils/audioEncoding"
 import { DefaultService } from "../client"
 
@@ -140,9 +141,9 @@ function CasePage() {
 
           const data = (await DefaultService.transcribeAudio({
             formData: formData as any,
-          })) as any
+          })) as TranscriptionResponse
 
-          const transcript = data.message as string
+          const transcript = data.message
 
           // Update the general_notes in state
           setEditedBackground((prev) => ({
@@ -192,7 +193,7 @@ function CasePage() {
       try {
         const data = (await DefaultService.getCaseWithSimulations({
           caseId: Number(id),
-        })) as any
+        })) as CaseWithSimulationsResponse
 
         // ✅ Parse simulations
         const simulations = data.simulations.map((sim: any) => ({

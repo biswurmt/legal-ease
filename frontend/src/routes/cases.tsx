@@ -13,10 +13,11 @@ import {
   VStack,
 } from "@chakra-ui/react"
 import { createFileRoute, useNavigate } from "@tanstack/react-router"
-import { useEffect, useState } from "react"
+import { useState } from "react"
 import { FiTrash2, FiX } from "react-icons/fi"
+import { DeleteConfirmationDialog } from "@/components/Common/DeleteConfirmationDialog"
 import { toaster } from "@/components/ui/toaster"
-import { DefaultService } from "../client"
+import { useCases, useCreateCase, useDeleteCase } from "@/hooks/useCases"
 
 export const Route = createFileRoute("/cases")({
   component: CasesPage,
@@ -36,56 +37,46 @@ function CasesPage() {
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
   const [caseToDelete, setCaseToDelete] = useState<Case | null>(null)
 
-  const [cases, setCases] = useState<Case[]>([])
+  // React Query hooks
+  const { data: casesData, isLoading, error } = useCases()
+  const createCaseMutation = useCreateCase()
+  const deleteCaseMutation = useDeleteCase()
 
-  useEffect(() => {
-    DefaultService.getAllCases()
-      .then((data: any) => {
-        const cases = data.map((c: any) => ({
-          id: String(c.id),
-          name: c.name,
-          last_modified: new Date(c.last_modified),
-          scenario_count: c.scenario_count || 0,
-        }))
-        setCases(cases)
-      })
-      .catch((err) => console.error("Failed to fetch cases:", err))
-  }, [])
+  // Transform data for display
+  const cases: Case[] = casesData
+    ? casesData.map((c: any) => ({
+        id: String(c.id),
+        name: c.name,
+        last_modified: new Date(c.last_modified),
+        scenario_count: c.scenario_count || 0,
+      }))
+    : []
 
   const handleNewCase = () => setIsNewCaseModalOpen(true)
 
   const handleCreateCase = async () => {
-    if (newCaseTitle.trim()) {
-      try {
-        const newCase = await DefaultService.createCase({
-          requestBody: {
-            name: newCaseTitle,
-            party_a: "",
-            party_b: "",
-            context: null,
-          },
-        })
+    if (!newCaseTitle.trim()) return
 
-        // Add to local state
-        setCases([
-          ...cases,
-          {
-            id: String(newCase.id),
-            name: newCase.name,
-            last_modified: new Date(newCase.last_modified),
-            scenario_count: newCase.scenario_count,
-          },
-        ])
+    try {
+      const newCase = await createCaseMutation.mutateAsync({
+        name: newCaseTitle,
+        party_a: "",
+        party_b: "",
+        context: null,
+      })
 
-        setIsNewCaseModalOpen(false)
-        setNewCaseTitle("")
+      setIsNewCaseModalOpen(false)
+      setNewCaseTitle("")
 
-        // Navigate to the new case
-        navigate({ to: "/case", search: { id: String(newCase.id) } })
-      } catch (error) {
-        console.error("Error creating case:", error)
-        alert("Failed to create case. Please try again.")
-      }
+      // Navigate to the new case
+      navigate({ to: "/case", search: { id: String(newCase.id) } })
+    } catch (error) {
+      console.error("Error creating case:", error)
+      toaster.create({
+        title: "Error",
+        description: "Failed to create case. Please try again.",
+        type: "error",
+      })
     }
   }
 
@@ -108,10 +99,7 @@ function CasesPage() {
     if (!caseToDelete) return
 
     try {
-      await DefaultService.deleteCase({ caseId: Number(caseToDelete.id) })
-
-      // Remove from local state
-      setCases(cases.filter((c) => c.id !== caseToDelete.id))
+      await deleteCaseMutation.mutateAsync(Number(caseToDelete.id))
 
       toaster.create({
         title: "Case deleted",
@@ -133,6 +121,40 @@ function CasesPage() {
   const handleCancelDelete = () => {
     setIsDeleteDialogOpen(false)
     setCaseToDelete(null)
+  }
+
+  // Show loading state
+  if (isLoading) {
+    return (
+      <Box
+        minHeight="100vh"
+        bg="#F4ECD8"
+        display="flex"
+        alignItems="center"
+        justifyContent="center"
+      >
+        <Text fontSize="xl" color="#3A3A3A">
+          Loading cases...
+        </Text>
+      </Box>
+    )
+  }
+
+  // Show error state
+  if (error) {
+    return (
+      <Box
+        minHeight="100vh"
+        bg="#F4ECD8"
+        display="flex"
+        alignItems="center"
+        justifyContent="center"
+      >
+        <Text fontSize="xl" color="red.600">
+          Failed to load cases. Please try again.
+        </Text>
+      </Box>
+    )
   }
 
   return (

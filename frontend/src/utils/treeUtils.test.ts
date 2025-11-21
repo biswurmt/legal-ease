@@ -51,8 +51,6 @@ describe("Tree Utilities", () => {
         content: "Hello",
         role: "A",
         selected: true,
-        simulation_id: 1,
-        parent_id: null,
         children: [],
       }
 
@@ -72,16 +70,12 @@ describe("Tree Utilities", () => {
         content: "Parent",
         role: "A",
         selected: true,
-        simulation_id: 1,
-        parent_id: null,
         children: [
           {
             id: 2,
             content: "Child 1",
             role: "B",
             selected: false,
-            simulation_id: 1,
-            parent_id: 1,
             children: [],
           },
           {
@@ -89,8 +83,6 @@ describe("Tree Utilities", () => {
             content: "Child 2",
             role: "B",
             selected: false,
-            simulation_id: 1,
-            parent_id: 1,
             children: [],
           },
         ],
@@ -111,16 +103,12 @@ describe("Tree Utilities", () => {
         content: "Parent",
         role: "A",
         selected: true,
-        simulation_id: 1,
-        parent_id: null,
         children: [
           {
             id: 2,
             content: "Child",
             role: "B",
             selected: false,
-            simulation_id: 1,
-            parent_id: 1,
             children: [],
           },
         ],
@@ -137,24 +125,18 @@ describe("Tree Utilities", () => {
         content: "Grandparent",
         role: "A",
         selected: true,
-        simulation_id: 1,
-        parent_id: null,
         children: [
           {
             id: 2,
             content: "Parent",
             role: "B",
             selected: true,
-            simulation_id: 1,
-            parent_id: 1,
             children: [
               {
                 id: 3,
                 content: "Child",
                 role: "A",
                 selected: false,
-                simulation_id: 1,
-                parent_id: 2,
                 children: [],
               },
             ],
@@ -183,8 +165,6 @@ describe("Tree Utilities", () => {
           content: "Root",
           role: "A",
           selected: true,
-          simulation_id: 1,
-          parent_id: null,
           children: [],
         },
       ]
@@ -203,24 +183,18 @@ describe("Tree Utilities", () => {
           content: "Root",
           role: "A",
           selected: true,
-          simulation_id: 1,
-          parent_id: null,
           children: [
             {
               id: 2,
               content: "Child 1",
               role: "B",
               selected: true,
-              simulation_id: 1,
-              parent_id: 1,
               children: [
                 {
                   id: 3,
                   content: "Grandchild",
                   role: "A",
                   selected: false,
-                  simulation_id: 1,
-                  parent_id: 2,
                   children: [],
                 },
               ],
@@ -230,8 +204,6 @@ describe("Tree Utilities", () => {
               content: "Child 2",
               role: "B",
               selected: false,
-              simulation_id: 1,
-              parent_id: 1,
               children: [],
             },
           ],

@@ -41,6 +41,7 @@ import {
   loadSimulationTree,
 } from "@/services/scenarioService"
 import type { DialogueNode, ResponseOption } from "@/types/scenario"
+import type { TranscriptionResponse } from "@/types/api"
 import { encodeWAV } from "@/utils/audioEncoding"
 import {
   buildDialogueTreeFromMessages,
@@ -227,9 +228,9 @@ function SimulationPage() {
 
           const data = (await DefaultService.transcribeAudio({
             formData: formData as any,
-          })) as any
+          })) as TranscriptionResponse
 
-          const transcript = data.message as string
+          const transcript = data.message
 
           // Instead of appending to general_notes, set it to customResponse
           setCustomResponse((prev) => `${prev} ${transcript}`)
