@@ -1,262 +1,253 @@
-# LegalEase Three-Tier Agent Refactoring Architecture
+# LegalEase Agent System
 
-This directory contains the definitions for a hierarchical, three-tier agent system designed to systematically refactor the LegalEase codebase while maintaining code quality, test coverage, and system functionality.
+A simplified two-tier agent system for refactoring and feature development.
 
 ## Architecture Overview
 
-The agent hierarchy follows a **command-and-delegate** pattern with three distinct tiers:
-
 ```
-┌─────────────────────────────────────────────────────────────────────┐
-│  TIER 1: HIGH-LEVEL ORCHESTRATOR (Sonnet)                          │
-│  - Oversees entire refactoring effort                              │
-│  - Coordinates Tier 2 mid-level agents                             │
-│  - Makes architectural decisions                                   │
-│  - Ensures cross-cutting consistency                               │
-│  - CANNOT make direct code changes                                 │
-└────────────┬────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────┐
+│  ORCHESTRATOR (Sonnet)                                  │
+│  - Plans refactoring/feature work                       │
+│  - Breaks work into focused tasks                       │
+│  - Spawns implementer agents                            │
+│  - Reviews code changes                                 │
+│  - Runs tests and validates quality                     │
+└────────────┬────────────────────────────────────────────┘
              │
-             ├─────────────────────────────────────────────────────────┐
-             │                                                         │
-             v                                                         v
-┌────────────────────────────────────┐    ┌──────────────────────────────────────┐
-│  TIER 2A: BACKEND REFACTORING      │    │  TIER 2B: FRONTEND REFACTORING       │
-│  AGENT (Sonnet)                    │    │  AGENT (Sonnet)                      │
-│  - Refactors backend/app/          │    │  - Refactors frontend/src/           │
-│  - Splits CRUD modules             │    │  - Consolidates UI components        │
-│  - Extracts business logic         │    │  - Expands service layer             │
-│  - Enforces backend tests          │    │  - Adds frontend tests               │
-│  - Spawns Tier 3 tasks             │    │  - Spawns Tier 3 tasks               │
-└────────────┬───────────────────────┘    └──────────────┬───────────────────────┘
-             │                                           │
-             v                                           v
-    ┌────────────────┐                         ┌────────────────┐
-    │ Tier 3A1:      │                         │ Tier 3B1:      │
-    │ CRUD Splitter  │                         │ Component      │
-    │ (Haiku)        │                         │ Consolidator   │
-    └────────────────┘                         │ (Haiku)        │
-    ┌────────────────┐                         └────────────────┘
-    │ Tier 3A2:      │                         ┌────────────────┐
-    │ Business Logic │                         │ Tier 3B2:      │
-    │ Extractor      │                         │ Service Layer  │
-    │ (Haiku)        │                         │ Expander       │
-    └────────────────┘                         │ (Haiku)        │
-                                               └────────────────┘
-
-             ┌─────────────────────────────────────┐
-             │  TIER 2C: CROSS-CUTTING REFACTORING │
-             │  AGENT (Sonnet)                     │
-             │  - Type safety enforcement          │
-             │  - Test coverage improvement        │
-             │  - Shared utilities & types         │
-             │  - Documentation consistency        │
-             │  - Spawns Tier 3 tasks              │
-             └────────────┬────────────────────────┘
-                          │
-                          v
-                 ┌────────────────┐
-                 │ Tier 3C1:      │
-                 │ Type Safety    │
-                 │ Enforcer       │
-                 │ (Haiku)        │
-                 └────────────────┘
-                 ┌────────────────┐
-                 │ Tier 3C2:      │
-                 │ Test Coverage  │
-                 │ Improver       │
-                 │ (Haiku)        │
-                 └────────────────┘
+             │ spawns with task definition
+             ▼
+┌─────────────────────────────────────────────────────────┐
+│  IMPLEMENTER (Haiku)                                    │
+│  - Executes single tightly-scoped task                  │
+│  - Modifies code files                                  │
+│  - Writes/updates tests                                 │
+│  - Runs quality checks                                  │
+│  - Reports completion                                   │
+└─────────────────────────────────────────────────────────┘
 ```
 
-## Tier Responsibilities
+## Core Principles
 
-### Tier 1: High-Level Orchestrator
-- **Model:** Sonnet (high reasoning capability for architectural decisions)
-- **Role:** Strategic coordinator
-- **Responsibilities:**
-  - Define refactoring roadmap
-  - Spawn and coordinate Tier 2 agents
-  - Monitor overall progress
-  - Resolve conflicts between agents
-  - Ensure architectural consistency
-  - Validate final deliverables
-- **Constraints:**
-  - CANNOT make direct code changes
-  - MUST delegate all implementation to Tier 2 agents
-  - MUST ensure Tier 2 agents don't conflict
-- **Success Criteria:**
-  - All Tier 2 agents complete their work
-  - All tests pass (backend + frontend)
-  - Code quality checks pass
-  - Docker environment functional
-  - No regressions introduced
+### 1. Clear Boundaries
+- **Orchestrator** plans and coordinates (doesn't write code)
+- **Implementer** executes tasks (doesn't make architectural decisions)
 
-### Tier 2: Mid-Level Domain Agents
-- **Model:** Sonnet (domain expertise + task breakdown capability)
-- **Role:** Domain specialists
-- **Count:** 3 agents (Backend, Frontend, Cross-Cutting)
-- **Responsibilities:**
-  - Own specific domains (backend, frontend, or cross-cutting)
-  - Break down work into Tier 3 tasks
-  - Spawn and coordinate Tier 3 agents
-  - Review Tier 3 deliverables
-  - Integrate changes from Tier 3 agents
-  - Report progress to Tier 1
-- **Constraints:**
-  - MUST maintain backward compatibility within domain
-  - MUST coordinate with other Tier 2 agents via Tier 1
-  - MUST pass all tests before reporting completion
-- **Success Criteria:**
-  - Domain-specific refactoring goals achieved
-  - All Tier 3 tasks completed
-  - Tests pass for modified code
-  - No conflicts with other domains
+### 2. Right Model for the Job
+- **Sonnet** for planning, reviewing, testing (high reasoning)
+- **Haiku** for focused implementation (fast, cost-effective)
 
-### Tier 3: Low-Level Task Agents
-- **Model:** Haiku (fast, cost-effective for focused tasks)
-- **Role:** Implementers
-- **Count:** 1-2 per Tier 2 agent (6+ total)
-- **Responsibilities:**
-  - Execute specific, tightly-scoped refactoring tasks
-  - Modify code files
-  - Write/update tests
-  - Ensure changes pass quality checks
-  - Report completion to parent Tier 2 agent
-- **Constraints:**
-  - MUST only modify files within assigned scope
-  - MUST pass all existing tests
-  - MUST adhere to code quality standards
-  - CANNOT make architectural decisions
-- **Success Criteria:**
-  - Assigned task completed
-  - Tests pass
-  - Code quality checks pass
-  - Parent agent approves changes
+### 3. Tightly Scoped Tasks
+Each implementer task should be:
+- Focused on one objective
+- Limited to 1-5 files
+- Completable independently
+- Clearly testable
 
-## Agent Coordination Protocol
+### 4. Quality First
+- All tests must pass after each task
+- Code quality checks enforced
+- No regressions allowed
+- Docker environment must stay functional
 
-### Communication Flow
-1. **Tier 1 → Tier 2:** Assigns domain and objectives
-2. **Tier 2 → Tier 3:** Assigns specific tasks with constraints
-3. **Tier 3 → Tier 2:** Reports completion and deliverables
-4. **Tier 2 → Tier 1:** Reports domain completion and summary
-5. **Tier 1 → User:** Final report and validation
+## Agent Roles
 
-### Conflict Resolution
-- **Within Domain:** Tier 2 agent resolves
-- **Cross-Domain:** Tier 1 orchestrator resolves
-- **Escalation:** If Tier 1 cannot resolve, defer to user
+### Orchestrator Agent
+**Model:** Sonnet
+**File:** `orchestrator.md`
 
-### Handoff Points
-1. **Tier 1 Spawn:** Defines objectives, constraints, success criteria for Tier 2
-2. **Tier 2 Spawn:** Defines file scope, exact task, acceptance criteria for Tier 3
-3. **Tier 3 Completion:** Submits changes, test results, quality check outputs
-4. **Tier 2 Integration:** Merges Tier 3 changes, validates integration
-5. **Tier 2 Completion:** Reports domain summary to Tier 1
-6. **Tier 1 Validation:** Runs full test suite, validates consistency
+**Responsibilities:**
+- Plan refactoring or feature development work
+- Break work into small, focused tasks
+- Spawn implementer agents with clear task definitions
+- Review code changes from implementers
+- Run tests and validate quality gates
+- Ensure consistency across changes
 
-## Usage Instructions
+**When to use:**
+- Starting a refactoring effort
+- Building a new feature
+- Coordinating multiple related changes
 
-### To Start Refactoring:
-1. Read the `REFACTORING_AUDIT.md` in the repository root
-2. Invoke the Tier 1 Orchestrator:
+### Implementer Agent
+**Model:** Haiku
+**File:** `implementer.md`
+
+**Responsibilities:**
+- Execute a single, well-defined task
+- Modify code files within assigned scope
+- Add/update tests for changes
+- Run linting and type checking
+- Report completion with summary
+
+**When to use:**
+- Spawned by Orchestrator for each task
+- Not invoked directly by users
+
+## Usage
+
+### Starting a Refactoring Effort
+
+1. **Invoke the Orchestrator:**
    ```
-   /agents tier-1-orchestrator
+   /agents orchestrator
    ```
-3. Tier 1 will spawn Tier 2 agents as needed
-4. Tier 2 agents will spawn Tier 3 agents as needed
-5. Monitor progress through Tier 1 status reports
 
-### To Resume After Interruption:
-1. Invoke Tier 1 Orchestrator
-2. Tier 1 will assess current state and resume coordination
+2. **Provide Context:**
+   - Reference audit reports if available
+   - Describe what needs to be refactored
+   - Specify any constraints or priorities
 
-### To Debug Agent Issues:
-1. Check agent log outputs for errors
-2. Review test failures to identify issues
-3. Escalate to parent tier if task cannot be completed
+3. **Orchestrator Will:**
+   - Analyze current codebase
+   - Create task breakdown
+   - Spawn implementer agents for each task
+   - Review and validate each deliverable
+   - Report overall progress
 
-## File Descriptions
+### Example Workflow
 
-- `tier-1-orchestrator.md` - High-level orchestrator definition
-- `tier-2-backend.md` - Backend domain agent definition
-- `tier-2-frontend.md` - Frontend domain agent definition
-- `tier-2-cross-cutting.md` - Cross-cutting concerns agent definition
-- `tier-3-crud-splitter.md` - CRUD module splitting task
-- `tier-3-business-logic-extractor.md` - Business logic extraction task
-- `tier-3-component-consolidator.md` - Frontend component consolidation task
-- `tier-3-service-layer-expander.md` - Frontend service layer expansion task
-- `tier-3-type-safety-enforcer.md` - Type safety enforcement task
-- `tier-3-test-coverage-improver.md` - Test coverage improvement task
+```
+User: "Refactor the backend CRUD system to be more modular"
+
+Orchestrator:
+  1. Reads backend/app/crud.py
+  2. Plans task breakdown:
+     - Task 1: Split crud.py into per-model modules
+     - Task 2: Update imports throughout codebase
+     - Task 3: Add tests for new structure
+  3. Spawns Implementer for Task 1
+  4. Reviews Task 1 deliverable
+  5. Runs tests
+  6. Spawns Implementer for Task 2
+  ... continues until complete
+
+Implementers:
+  - Execute assigned tasks
+  - Report completion
+  - Provide summary of changes
+```
+
+## Task Definition Template
+
+When Orchestrator spawns an Implementer, it uses this template:
+
+```markdown
+Task: [Concise description]
+
+Scope:
+  - Files to read: [list]
+  - Files to modify: [list]
+  - Files to create: [list]
+
+Objective: [What needs to be accomplished]
+
+Constraints:
+  - All existing tests must pass
+  - [Additional constraints]
+
+Success Criteria:
+  - [Specific, measurable criteria]
+  - [Additional criteria]
+```
 
 ## Quality Gates
 
-Each tier must pass quality gates before reporting completion:
-
-### Tier 3 Quality Gates:
-- ✅ All modified files pass linting (Ruff/Biome)
-- ✅ All modified files pass type checking (Mypy/TypeScript)
+### Per-Task Quality Gates
+After each implementer task:
 - ✅ All existing tests pass
-- ✅ New tests added for new functionality
-- ✅ Code coverage maintained or improved
+- ✅ Linting passes (Ruff/Biome)
+- ✅ Type checking passes (Mypy/TypeScript)
+- ✅ No regressions introduced
 
-### Tier 2 Quality Gates:
-- ✅ All Tier 3 tasks completed
-- ✅ Integration tests pass
-- ✅ No conflicts with other domains
-- ✅ Documentation updated
-- ✅ Docker Compose still functional
-
-### Tier 1 Quality Gates:
-- ✅ All Tier 2 agents completed
+### Overall Quality Gates
+Before reporting completion:
+- ✅ All planned tasks completed
 - ✅ Full test suite passes (backend + frontend)
-- ✅ Pre-commit hooks pass
 - ✅ Docker Compose builds and runs
-- ✅ No API compatibility breaks
-- ✅ Refactoring objectives achieved
+- ✅ Pre-commit hooks pass
+- ✅ All objectives achieved
 
-## Constraints & Guidelines
+## Protected Files
 
-### CRITICAL: DO NOT MODIFY
-- `frontend/src/client/**` (auto-generated OpenAPI client)
-- `frontend/src/routeTree.gen.ts` (auto-generated router)
-- `backend/app/alembic/versions/*.py` (database migrations - read-only)
+**NEVER MODIFY:**
+- `frontend/src/client/**` - Auto-generated OpenAPI client
+- `frontend/src/routeTree.gen.ts` - Auto-generated router
+- `backend/app/alembic/versions/*.py` - Database migrations (read-only)
 
-### Database Changes
-- MUST use Alembic migrations for schema changes
-- NEVER directly modify `models.py` without creating migration
-- Test migrations in Docker environment
+**SPECIAL HANDLING:**
+- Database schema changes → Use Alembic migrations
+- API contract changes → Coordinate frontend/backend
 
-### Testing Requirements
-- ALL changes MUST pass existing tests
-- NEW functionality MUST include tests
-- AIM for 80%+ test coverage
+## Testing Commands
 
-### Code Quality
-- Backend: MUST pass `ruff check` and `mypy --strict`
-- Frontend: MUST pass `npm run lint`
-- Pre-commit hooks MUST pass
+```bash
+# Backend tests
+cd backend && bash scripts/test.sh
 
-### API Compatibility
-- Maintain OpenAPI schema compatibility
-- Use versioned endpoints for breaking changes
-- Coordinate frontend/backend changes
+# Frontend tests
+cd frontend && npm run test -- --run
 
-## Success Metrics
+# Backend linting
+cd backend && uv run ruff check
 
-The refactoring effort is successful when:
+# Backend type checking
+cd backend && uv run mypy app
 
-1. ✅ All Tier 2 agents report completion
-2. ✅ Backend test suite passes (pytest)
-3. ✅ Frontend test suite passes (vitest)
-4. ✅ Code quality checks pass (Ruff, Mypy, Biome)
-5. ✅ Docker Compose environment functional
-6. ✅ API compatibility maintained
-7. ✅ Test coverage maintained or improved
-8. ✅ No regressions introduced
+# Frontend linting
+cd frontend && npm run lint
+
+# Pre-commit hooks
+uv run pre-commit run --all-files
+
+# Docker validation
+docker compose build
+docker compose up -d && docker compose ps
+```
+
+## Benefits of This System
+
+### Simplicity
+- Only 2 agent types (down from 10+)
+- Clear, understandable roles
+- Easy to reason about
+
+### Cost-Effective
+- Haiku for most implementation work
+- Sonnet only for planning and review
+- Reduced token usage
+
+### Maintainable
+- Small, focused tasks
+- Each task independently testable
+- Easy to debug and rollback
+
+### Quality
+- Reviews built into workflow
+- Tests run after each task
+- Quality gates enforced
+
+## Migration from Old System
+
+The previous system had 3 tiers with 10+ specialized agents:
+- Tier 1: Orchestrator
+- Tier 2: Backend, Frontend, Cross-Cutting agents
+- Tier 3: CRUD Splitter, Business Logic Extractor, Component Consolidator, Service Layer Expander, Type Safety Enforcer, Test Coverage Improver
+
+**What changed:**
+- ❌ Removed domain-specific agents (Backend/Frontend/Cross-Cutting)
+- ❌ Removed specialized task agents (6 different types)
+- ✅ Kept core orchestration pattern
+- ✅ Kept task-based execution
+- ✅ Kept quality gates and testing
+
+**What stayed the same:**
+- Clear boundaries between planning and execution
+- Haiku for focused tasks, Sonnet for coordination
+- Quality-first approach
+- Test-driven validation
 
 ---
 
-**Agent Architecture Version:** 1.0
-**Last Updated:** 2025-11-18
-**Next Review:** After first refactoring iteration
+**Version:** 2.0 (Simplified)
+**Last Updated:** 2025-11-19
+**Agent Count:** 2 (down from 10+)
