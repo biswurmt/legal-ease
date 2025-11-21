@@ -1,5 +1,5 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router"
 import { Box, Button, Heading, Image, VStack } from "@chakra-ui/react"
+import { createFileRoute, useNavigate } from "@tanstack/react-router"
 
 export const Route = createFileRoute("/")({
   component: HomePage,

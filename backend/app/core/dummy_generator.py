@@ -1,20 +1,11 @@
 import json
 from datetime import datetime
 
-from sqlmodel import Session, SQLModel, create_engine, select, func
-
-from app.api.routes.audio_models import get_session, get_context_history
-from app.core.db import engine
-from app.crud import get_messages_by_tree, get_case_context
-from app.models import Case, Simulation, Message
-from app.core.config import settings
-from app.schemas import messages_to_conversation
 from sqlalchemy import text
+from sqlmodel import Session, func, select
 
-
-from app.models import Case, Simulation, Message
-from sqlmodel import Session
 from app.core.db import engine
+from app.models import Case, Message, Simulation
 
 
 def clear_all_data(session: Session):
@@ -35,9 +26,8 @@ def create_sample_data():
         # Check if data already exists
         existing_cases = session.exec(select(func.count(Case.id))).first()
         if existing_cases and existing_cases > 0:
-            print("✅ Database already contains data. Skipping sample data creation.")
             return
-        
+
         # === Build context JSON ===
         case_context = {
             "parties": {
@@ -235,27 +225,7 @@ def create_sample_data():
         session.add_all(assistant_followups)
         session.commit()
 
-        print("✅ Database prepopulated with one sample case, simulation, and multi-option messages per side.")
-
 
 
 if __name__ == "__main__":
     create_sample_data()
-    #
-    # with Session(engine) as session:
-    #     clear_all_data(session)
-
-
-
-    #     messages_history = get_messages_by_tree(session, 1)
-    #     print(messages_history)
-    # #
-    # with Session(engine) as session:
-    # #     # messages = get_case_context(session, case_id=1)
-    #     messages = get_messages_by_tree(session, 6)
-    # #
-    # # #     conversation_json = messages_to_conversation(messages).model_dump_json(
-    # # #         indent=2)
-    #     print(messages)
-
-

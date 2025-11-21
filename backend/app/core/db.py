@@ -1,8 +1,8 @@
-from sqlmodel import Session, create_engine, select
+from collections.abc import Generator
 
-# from app import crud
+from sqlmodel import Session, create_engine
+
 from app.core.config import settings
-from app.models import Case, Simulation
 
 engine = create_engine(str(settings.SQLALCHEMY_DATABASE_URI))
 
@@ -12,7 +12,7 @@ engine = create_engine(str(settings.SQLALCHEMY_DATABASE_URI))
 # for more details: https://github.com/fastapi/full-stack-fastapi-template/issues/28
 
 
-def init_db(session: Session) -> None:
+def init_db() -> None:
     # Tables should be created with Alembic migrations
     # But if you don't want to use migrations, create
     # the tables un-commenting the next lines
@@ -20,5 +20,11 @@ def init_db(session: Session) -> None:
 
     # This works because the models are already imported and registered from app.models
     SQLModel.metadata.create_all(engine)
+
+
+def get_session() -> Generator[Session, None, None]:
+    """Database session dependency for FastAPI routes"""
+    with Session(engine) as session:
+        yield session
 
 

@@ -1,13 +1,14 @@
 from datetime import datetime
 
 from pydantic import BaseModel
-from typing import Optional, Literal, List, Dict, Any
+
 from app.models import Message
+
 
 # Audio and Legal API Response Models
 class AudioResponse(BaseModel):
     message: str
-    audio_data: Optional[bytes] = None  # Base64 encoded audio
+    audio_data: bytes | None = None  # Base64 encoded audio
 
 class ContextResponse(BaseModel):
     context: str
@@ -18,18 +19,18 @@ class TreeNode(BaseModel):
     line: str
     level: int
     reflects_personality: str
-    responses: List['TreeNode'] = []
+    responses: list['TreeNode'] = []
 
 class ScenariosTreeResponse(BaseModel):
     scenarios_tree: TreeNode
 
 class TreeResponse(BaseModel):
-    tree_id: Optional[int] = None
+    tree_id: int | None = None
     case_id: int
     simulation_goal: str
     scenarios_tree: TreeNode
-    error: Optional[str] = None
-    raw_response: Optional[str] = None
+    error: str | None = None
+    raw_response: str | None = None
 
 class ModelRequest(BaseModel):
     question: str
@@ -39,7 +40,7 @@ class ConversationTurn(BaseModel):
     statement: str
 
 class ConversationResponse(BaseModel):
-    conversation: List[ConversationTurn]
+    conversation: list[ConversationTurn]
 
 def map_role_to_party(role: str) -> str:
     role = role.lower()
@@ -66,10 +67,10 @@ def messages_to_conversation(messages: list[Message]) -> ConversationResponse:
 class CaseWithTreeCount(BaseModel):
     id: int
     name: str
-    party_a: str
-    party_b: str
-    context: str
-    summary: str
+    party_a: str | None
+    party_b: str | None
+    context: str | None
+    summary: str | None
     last_modified: datetime
     scenario_count: int
 

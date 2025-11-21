@@ -1,10 +1,9 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router"
-import { useEffect, useState } from "react"
 import {
   Box,
   Button,
   Card,
   Container,
+  Dialog,
   Heading,
   HStack,
   Icon,
@@ -18,31 +17,42 @@ import {
   Textarea,
   VStack,
 } from "@chakra-ui/react"
-import { Dialog } from "@chakra-ui/react"
-import { toaster } from "@/components/ui/toaster"
-import { FiSave, FiMic, FiPlay, FiList, FiMap, FiRefreshCw, FiTrash2, FiSquare } from "react-icons/fi"
-import type { DialogueNode, ResponseOption } from "@/types/scenario"
+import { createFileRoute, useNavigate } from "@tanstack/react-router"
+import { useEffect, useState } from "react"
 import {
-  loadSimulationTree,
+  FiList,
+  FiMap,
+  FiMic,
+  FiPlay,
+  FiRefreshCw,
+  FiSave,
+  FiSquare,
+  FiTrash2,
+} from "react-icons/fi"
+import { toaster } from "@/components/ui/toaster"
+import {
   continueConversation,
-  createCustomMessage,
-  getSimulation,
   createBookmark,
-  getBookmarks,
+  createCustomMessage,
   deleteBookmark,
+  getBookmarks,
   getConversationAudio,
+  getSimulation,
+  loadSimulationTree,
 } from "@/services/scenarioService"
-import { DefaultService } from "../client"
+import type { TranscriptionResponse } from "@/types/api"
+import type { DialogueNode, ResponseOption } from "@/types/scenario"
+import { encodeWAV } from "@/utils/audioEncoding"
 import {
   buildDialogueTreeFromMessages,
   findNodeInTree,
-  getSelectedPath,
   getPathToNode,
-  updateSelectedPath,
+  getSelectedPath,
   isLeafNode,
+  updateSelectedPath,
 } from "@/utils/treeUtils"
-import Flow from "./tree";
-
+import { DefaultService } from "../client"
+import Flow from "./tree"
 
 interface ScenarioSearchParams {
   caseId: number
@@ -51,9 +61,7 @@ interface ScenarioSearchParams {
 }
 
 export const Route = createFileRoute("/scenario")({
-  validateSearch: (
-    search: Record<string, unknown>,
-  ): ScenarioSearchParams => {
+  validateSearch: (search: Record<string, unknown>): ScenarioSearchParams => {
     return {
       caseId: Number(search.caseId),
       simulationId: Number(search.simulationId),
@@ -69,7 +77,9 @@ function SimulationPage() {
 
   // State management - NEW
   const [fullTree, setFullTree] = useState<DialogueNode | null>(null)
-  const [currentMessageId, setCurrentMessageId] = useState<number | null>(messageId || null)
+  const [currentMessageId, setCurrentMessageId] = useState<number | null>(
+    messageId || null,
+  )
   const [error, setError] = useState<string | null>(null)
   const [simulationTitle, setSimulationTitle] = useState<string>("")
 
@@ -82,13 +92,17 @@ function SimulationPage() {
   const [isGeneratingVoiceover, setIsGeneratingVoiceover] = useState(false)
   const [narrationUrl, setNarrationUrl] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<string>("current")
-  const [viewMode, setViewMode] = useState<"conversation" | "tree">("conversation")
-  const [bookmarks, setBookmarks] = useState<Array<{
-    id: number
-    simulation_id: number
-    message_id: number
-    name: string
-  }>>([])
+  const [viewMode, setViewMode] = useState<"conversation" | "tree">(
+    "conversation",
+  )
+  const [bookmarks, setBookmarks] = useState<
+    Array<{
+      id: number
+      simulation_id: number
+      message_id: number
+      name: string
+    }>
+  >([])
 
   const [isRecording, setIsRecording] = useState(false)
   const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null)
@@ -105,7 +119,7 @@ function SimulationPage() {
         const [simulation, messages, bookmarksData] = await Promise.all([
           getSimulation(simulationId),
           loadSimulationTree(simulationId),
-          getBookmarks(simulationId).catch(() => []) // Ignore errors, default to empty array
+          getBookmarks(simulationId).catch(() => []), // Ignore errors, default to empty array
         ])
 
         // Set simulation title
@@ -158,13 +172,14 @@ function SimulationPage() {
     : []
 
   // Helper to get current node
-  const currentNode = fullTree && currentMessageId
-    ? findNodeInTree(fullTree, String(currentMessageId))
-    : null
+  const currentNode =
+    fullTree && currentMessageId
+      ? findNodeInTree(fullTree, String(currentMessageId))
+      : null
 
   // Helper to get available response options
   const responseOptions: ResponseOption[] = currentNode
-    ? currentNode.children.map(child => ({
+    ? currentNode.children.map((child) => ({
         id: child.id,
         text: child.statement,
         party: child.party,
@@ -172,129 +187,74 @@ function SimulationPage() {
     : []
 
   const handleStartRecording = async () => {
-  try {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    const recorder = new MediaRecorder(stream);
-    const chunks: Blob[] = [];
-    setAudioChunks(chunks);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      const recorder = new MediaRecorder(stream)
+      const chunks: Blob[] = []
+      setAudioChunks(chunks)
 
-    recorder.ondataavailable = (event) => {
-      chunks.push(event.data);
-    };
+      recorder.ondataavailable = (event) => {
+        chunks.push(event.data)
+      }
 
-    recorder.start();
-    setMediaRecorder(recorder);
-    setIsRecording(true);
-  } catch (err) {
-    console.error("Microphone access denied or unavailable:", err);
-  }
-};
-
-
-function encodeWAV(audioBuffer: AudioBuffer) {
-  const numChannels = audioBuffer.numberOfChannels;
-  const sampleRate = audioBuffer.sampleRate;
-  const format = 1; // PCM
-  const bitsPerSample = 16;
-
-  const samples = interleave(audioBuffer);
-  const buffer = new ArrayBuffer(44 + samples.length * 2);
-  const view = new DataView(buffer);
-
-  // RIFF chunk descriptor
-  writeString(view, 0, "RIFF");
-  view.setUint32(4, 36 + samples.length * 2, true);
-  writeString(view, 8, "WAVE");
-
-  // fmt subchunk
-  writeString(view, 12, "fmt ");
-  view.setUint32(16, 16, true); // subchunk1 size
-  view.setUint16(20, format, true);
-  view.setUint16(22, numChannels, true);
-  view.setUint32(24, sampleRate, true);
-  view.setUint32(28, sampleRate * numChannels * bitsPerSample / 8, true);
-  view.setUint16(32, numChannels * bitsPerSample / 8, true);
-  view.setUint16(34, bitsPerSample, true);
-
-  // data subchunk
-  writeString(view, 36, "data");
-  view.setUint32(40, samples.length * 2, true);
-
-  // write PCM samples
-  let offset = 44;
-  for (let i = 0; i < samples.length; i++, offset += 2) {
-    let s = Math.max(-1, Math.min(1, samples[i]));
-    view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7fff, true);
-  }
-
-  return new Blob([view], { type: "audio/wav" });
-}
-
-// Helper: interleave channels
-function interleave(buffer: AudioBuffer) {
-  const numChannels = buffer.numberOfChannels;
-  const length = buffer.length;
-  const result = new Float32Array(length * numChannels);
-
-  for (let i = 0; i < length; i++) {
-    for (let ch = 0; ch < numChannels; ch++) {
-      result[i * numChannels + ch] = buffer.getChannelData(ch)[i];
+      recorder.start()
+      setMediaRecorder(recorder)
+      setIsRecording(true)
+    } catch (err) {
+      console.error("Microphone access denied or unavailable:", err)
     }
   }
-  return result;
-}
 
-function writeString(view: DataView, offset: number, str: string) {
-  for (let i = 0; i < str.length; i++) {
-    view.setUint8(offset + i, str.charCodeAt(i));
-  }
-}
+  const handleStopRecording = async () => {
+    if (mediaRecorder) {
+      mediaRecorder.onstop = async () => {
+        try {
+          // Convert recorded chunks to ArrayBuffer
+          const blob = new Blob(audioChunks)
+          const arrayBuffer = await blob.arrayBuffer()
 
+          // Decode audio
+          const audioCtx = new (
+            window.AudioContext || (window as any).webkitAudioContext
+          )()
+          const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer)
 
-const handleStopRecording = async () => {
-  if (mediaRecorder) {
-    mediaRecorder.onstop = async () => {
-      try {
-        // Convert recorded chunks to ArrayBuffer
-        const blob = new Blob(audioChunks);
-        const arrayBuffer = await blob.arrayBuffer();
+          // Encode to WAV
+          const wavBlob = encodeWAV(audioBuffer)
 
-        // Decode audio
-        const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
-        const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+          // Send to backend
+          const formData = new FormData()
+          formData.append("audio_file", wavBlob, "recording.wav")
 
-        // Encode to WAV
-        const wavBlob = encodeWAV(audioBuffer);
+          const data = (await DefaultService.transcribeAudio({
+            formData: formData as any,
+          })) as TranscriptionResponse
 
-        // Send to backend
-        const formData = new FormData();
-        formData.append("audio_file", wavBlob, "recording.wav");
+          const transcript = data.message
 
-        const data = await DefaultService.transcribeAudio({
-          formData: formData as any,
-        }) as any;
-
-        const transcript = data.message as string;
-
-
-        // Instead of appending to general_notes, set it to customResponse
-        setCustomResponse((prev) => prev + " " + transcript);
-
-      } catch (err) {
-        console.error("Error sending audio to backend:", err);
-      } finally {
-        setIsRecording(false);
-        setAudioChunks([]);
+          // Instead of appending to general_notes, set it to customResponse
+          setCustomResponse((prev) => `${prev} ${transcript}`)
+        } catch (err) {
+          console.error("Error sending audio to backend:", err)
+        } finally {
+          setIsRecording(false)
+          setAudioChunks([])
+        }
       }
-    };
 
-    mediaRecorder.stop();
+      mediaRecorder.stop()
+    }
   }
-};
 
   // Handle submitting a custom user response
   const handleSubmitCustomResponse = async () => {
-    if (!customResponse.trim() || isGeneratingResponses || !fullTree || !currentMessageId) return
+    if (
+      !customResponse.trim() ||
+      isGeneratingResponses ||
+      !fullTree ||
+      !currentMessageId
+    )
+      return
 
     setIsGeneratingResponses(true)
 
@@ -302,9 +262,10 @@ const handleStopRecording = async () => {
       // Determine the role from the current node's children
       // The custom response should match the role of the available options
       const node = findNodeInTree(fullTree, String(currentMessageId))
-      const role = node && node.children && node.children.length > 0
-        ? node.children[0].party // Get role from first child
-        : "user" // Default fallback
+      const role =
+        node?.children && node.children.length > 0
+          ? node.children[0].party // Get role from first child
+          : "user" // Default fallback
 
       console.log("role", role)
 
@@ -313,7 +274,7 @@ const handleStopRecording = async () => {
         simulationId,
         currentMessageId,
         customResponse,
-        role
+        role,
       )
 
       // Step 3: Call continue-conversation to generate AI responses
@@ -507,7 +468,10 @@ const handleStopRecording = async () => {
   }
 
   // Handle navigate to bookmark
-  const handleNavigateToBookmark = async (bookmark: { message_id: number; name: string }) => {
+  const handleNavigateToBookmark = async (bookmark: {
+    message_id: number
+    name: string
+  }) => {
     try {
       // Navigate to the bookmarked message
       navigate({
@@ -571,7 +535,10 @@ const handleStopRecording = async () => {
 
     try {
       // Fetch audio from backend
-      const audioBlob = await getConversationAudio(simulationId, currentMessageId)
+      const audioBlob = await getConversationAudio(
+        simulationId,
+        currentMessageId,
+      )
 
       // Create object URL for the audio blob
       const audioUrl = URL.createObjectURL(audioBlob)
@@ -641,7 +608,13 @@ const handleStopRecording = async () => {
   // Show loading state
   if (isLoading) {
     return (
-      <Box minHeight="100vh" bg="#F4ECD8" display="flex" alignItems="center" justifyContent="center">
+      <Box
+        minHeight="100vh"
+        bg="#F4ECD8"
+        display="flex"
+        alignItems="center"
+        justifyContent="center"
+      >
         <Spinner size="xl" color="#3A3A3A" />
       </Box>
     )
@@ -650,9 +623,21 @@ const handleStopRecording = async () => {
   // Show error state
   if (error) {
     return (
-      <Box minHeight="100vh" bg="#F4ECD8" display="flex" flexDirection="column" alignItems="center" justifyContent="center" p={8}>
-        <Text fontSize="xl" color="red.600" mb={4}>{error}</Text>
-        <Button onClick={() => navigate({ to: "/cases" })}>Return to Cases</Button>
+      <Box
+        minHeight="100vh"
+        bg="#F4ECD8"
+        display="flex"
+        flexDirection="column"
+        alignItems="center"
+        justifyContent="center"
+        p={8}
+      >
+        <Text fontSize="xl" color="red.600" mb={4}>
+          {error}
+        </Text>
+        <Button onClick={() => navigate({ to: "/cases" })}>
+          Return to Cases
+        </Button>
       </Box>
     )
   }
@@ -660,8 +645,16 @@ const handleStopRecording = async () => {
   // Show empty state if no tree loaded
   if (!fullTree) {
     return (
-      <Box minHeight="100vh" bg="#F4ECD8" display="flex" alignItems="center" justifyContent="center">
-        <Text fontSize="xl" color="#3A3A3A">No conversation data available</Text>
+      <Box
+        minHeight="100vh"
+        bg="#F4ECD8"
+        display="flex"
+        alignItems="center"
+        justifyContent="center"
+      >
+        <Text fontSize="xl" color="#3A3A3A">
+          No conversation data available
+        </Text>
       </Box>
     )
   }
@@ -687,171 +680,220 @@ const handleStopRecording = async () => {
             top="32px"
             height="calc(100vh - 160px)"
           >
-          {/* Sidebar Header */}
-          <Box p={4} borderBottom="1px solid" borderColor="gray.200" flexShrink={0}>
-            <Heading fontSize="xl" fontWeight="semibold" color="#3A3A3A">
-              Scenarios
-            </Heading>
+            {/* Sidebar Header */}
+            <Box
+              p={4}
+              borderBottom="1px solid"
+              borderColor="gray.200"
+              flexShrink={0}
+            >
+              <Heading fontSize="xl" fontWeight="semibold" color="#3A3A3A">
+                Scenarios
+              </Heading>
+            </Box>
+
+            {/* Tabs */}
+            <Tabs.Root
+              value={activeTab}
+              onValueChange={(e) => setActiveTab(e.value)}
+              flex={1}
+              display="flex"
+              flexDirection="column"
+              minH={0}
+            >
+              <Tabs.List px={4} pt={2} flexShrink={0}>
+                <Tabs.Trigger value="current" fontWeight="semibold">
+                  Current
+                </Tabs.Trigger>
+                <Tabs.Trigger value="bookmarked" fontWeight="semibold">
+                  Bookmarked
+                </Tabs.Trigger>
+              </Tabs.List>
+
+              {/* Current Tab - Conversation History */}
+              <Tabs.Content
+                value="current"
+                flex={1}
+                display="flex"
+                flexDirection="column"
+                minH={0}
+                padding="0px"
+              >
+                <Box
+                  p={4}
+                  borderBottom="1px solid"
+                  borderColor="gray.200"
+                  flexShrink={0}
+                >
+                  <VStack gap={2} width="100%">
+                    <Button
+                      width="100%"
+                      variant="outline"
+                      size="sm"
+                      color="darkGrey.text"
+                      borderColor="darkGrey.text"
+                      _hover={{ bg: "gray.100" }}
+                      onClick={
+                        narrationUrl
+                          ? handlePlayNarration
+                          : handleGenerateVoiceover
+                      }
+                      loading={isGeneratingVoiceover}
+                      loadingText="Generating..."
+                    >
+                      {narrationUrl ? <FiPlay /> : <FiMic />}
+                      {narrationUrl ? "Play" : "Generate Narration"}
+                    </Button>
+                    <Button
+                      width="100%"
+                      variant="outline"
+                      size="sm"
+                      color="darkGrey.text"
+                      borderColor="darkGrey.text"
+                      _hover={{ bg: "gray.100" }}
+                      onClick={() => setIsSaveModalOpen(true)}
+                    >
+                      <FiSave />
+                      Bookmark
+                    </Button>
+                  </VStack>
+                </Box>
+                <ScrollArea.Root flex={1} minH={0}>
+                  <ScrollArea.Viewport>
+                    <ScrollArea.Content p={4} padding="4" textStyle="sm">
+                      <VStack gap={2} alignItems="stretch">
+                        {conversationHistory.map((node, index) => (
+                          <Box
+                            key={node.id}
+                            p={3}
+                            bg="white"
+                            border="2px solid"
+                            borderColor={
+                              node.party === "A" ? "slate.500" : "salmon.500"
+                            }
+                            borderRadius="md"
+                            cursor="pointer"
+                            opacity={
+                              index === conversationHistory.length - 1 ? 1 : 0.7
+                            }
+                            _hover={{
+                              opacity: 1,
+                              shadow: "sm",
+                              borderColor:
+                                node.party === "A" ? "slate.600" : "salmon.600",
+                            }}
+                            onClick={() => handleNavigateToNode(node.id)}
+                            transition="all 0.2s"
+                          >
+                            <Text
+                              fontSize="xs"
+                              fontWeight="bold"
+                              color="#3A3A3A"
+                              mb={1}
+                            >
+                              {node.party === "A" ? "Party A" : "Party B"}
+                            </Text>
+                            <Text
+                              fontSize="sm"
+                              color="#3A3A3A"
+                              lineHeight="1.4"
+                            >
+                              {node.statement}
+                            </Text>
+                          </Box>
+                        ))}
+                      </VStack>
+                    </ScrollArea.Content>
+                  </ScrollArea.Viewport>
+                  <ScrollArea.Scrollbar />
+                </ScrollArea.Root>
+              </Tabs.Content>
+
+              {/* Bookmarked Tab - Saved Scenarios */}
+              <Tabs.Content
+                value="bookmarked"
+                flex={1}
+                display="flex"
+                flexDirection="column"
+                minH={0}
+              >
+                <ScrollArea.Root flex={1} minH={0}>
+                  <ScrollArea.Viewport>
+                    <ScrollArea.Content p={4} paddingEnd="3" textStyle="sm">
+                      <VStack gap={3} alignItems="stretch">
+                        {bookmarks.length === 0 ? (
+                          <Text
+                            fontSize="sm"
+                            color="#999"
+                            textAlign="center"
+                            py={4}
+                          >
+                            No bookmarks yet. Create one in the "Current" tab.
+                          </Text>
+                        ) : (
+                          bookmarks.map((bookmark) => (
+                            <Box
+                              key={bookmark.id}
+                              p={3}
+                              bg="white"
+                              border="1px solid"
+                              borderColor="gray.300"
+                              borderRadius="md"
+                              _hover={{
+                                borderColor: "slate.500",
+                                shadow: "sm",
+                              }}
+                            >
+                              <HStack
+                                justify="space-between"
+                                align="start"
+                                mb={2}
+                              >
+                                <Text
+                                  fontSize="sm"
+                                  fontWeight="semibold"
+                                  color="#3A3A3A"
+                                  cursor="pointer"
+                                  onClick={() =>
+                                    handleNavigateToBookmark(bookmark)
+                                  }
+                                >
+                                  {bookmark.name}
+                                </Text>
+                                <Button
+                                  size="xs"
+                                  variant="ghost"
+                                  colorScheme="red"
+                                  onClick={() =>
+                                    handleDeleteBookmark(bookmark.id)
+                                  }
+                                >
+                                  <Icon as={FiTrash2} />
+                                </Button>
+                              </HStack>
+                            </Box>
+                          ))
+                        )}
+                      </VStack>
+                    </ScrollArea.Content>
+                  </ScrollArea.Viewport>
+                  <ScrollArea.Scrollbar />
+                </ScrollArea.Root>
+              </Tabs.Content>
+            </Tabs.Root>
           </Box>
 
-          {/* Tabs */}
-          <Tabs.Root
-            value={activeTab}
-            onValueChange={(e) => setActiveTab(e.value)}
+          {/* Main Content Area */}
+          <Box
             flex={1}
             display="flex"
             flexDirection="column"
-            minH={0}
+            position={viewMode === "tree" ? "sticky" : "relative"}
+            top={viewMode === "tree" ? "32px" : "auto"}
+            height={viewMode === "tree" ? "calc(100vh - 160px)" : "auto"}
           >
-            <Tabs.List px={4} pt={2} flexShrink={0}>
-              <Tabs.Trigger value="current" fontWeight="semibold">Current</Tabs.Trigger>
-              <Tabs.Trigger value="bookmarked" fontWeight="semibold">Bookmarked</Tabs.Trigger>
-            </Tabs.List>
-
-            {/* Current Tab - Conversation History */}
-            <Tabs.Content value="current" flex={1} display="flex" flexDirection="column" minH={0} padding="0px">
-              <Box p={4} borderBottom="1px solid" borderColor="gray.200" flexShrink={0}>
-                <VStack gap={2} width="100%">
-                  <Button
-                    width="100%"
-                    variant="outline"
-                    size="sm"
-                    color="darkGrey.text"
-                    borderColor="darkGrey.text"
-                    _hover={{ bg: "gray.100" }}
-                    onClick={
-                      narrationUrl ? handlePlayNarration : handleGenerateVoiceover
-                    }
-                    loading={isGeneratingVoiceover}
-                    loadingText="Generating..."
-                  >
-                    {narrationUrl ? <FiPlay /> : <FiMic />}
-                    {narrationUrl ? "Play" : "Generate Narration"}
-                  </Button>
-                  <Button
-                    width="100%"
-                    variant="outline"
-                    size="sm"
-                    color="darkGrey.text"
-                    borderColor="darkGrey.text"
-                    _hover={{ bg: "gray.100" }}
-                    onClick={() => setIsSaveModalOpen(true)}
-                  >
-                    <FiSave />
-                    Bookmark
-                  </Button>
-                </VStack>
-              </Box>
-              <ScrollArea.Root flex={1} minH={0}>
-                <ScrollArea.Viewport>
-                  <ScrollArea.Content p={4} padding="4" textStyle="sm">
-                    <VStack gap={2} alignItems="stretch">
-                      {conversationHistory.map((node, index) => (
-                        <Box
-                          key={node.id}
-                          p={3}
-                          bg="white"
-                          border="2px solid"
-                          borderColor={node.party === "A" ? "slate.500" : "salmon.500"}
-                          borderRadius="md"
-                          cursor="pointer"
-                          opacity={index === conversationHistory.length - 1 ? 1 : 0.7}
-                          _hover={{
-                            opacity: 1,
-                            shadow: "sm",
-                            borderColor: node.party === "A" ? "slate.600" : "salmon.600",
-                          }}
-                          onClick={() => handleNavigateToNode(node.id)}
-                          transition="all 0.2s"
-                        >
-                          <Text fontSize="xs" fontWeight="bold" color="#3A3A3A" mb={1}>
-                            {node.party === "A" ? "Party A" : "Party B"}
-                          </Text>
-                          <Text fontSize="sm" color="#3A3A3A" lineHeight="1.4">
-                            {node.statement}
-                          </Text>
-                        </Box>
-                      ))}
-                    </VStack>
-                  </ScrollArea.Content>
-                </ScrollArea.Viewport>
-                <ScrollArea.Scrollbar />
-              </ScrollArea.Root>
-            </Tabs.Content>
-
-            {/* Bookmarked Tab - Saved Scenarios */}
-            <Tabs.Content value="bookmarked" flex={1} display="flex" flexDirection="column" minH={0}>
-              <ScrollArea.Root flex={1} minH={0}>
-                <ScrollArea.Viewport>
-                  <ScrollArea.Content p={4} paddingEnd="3" textStyle="sm">
-                    <VStack gap={3} alignItems="stretch">
-                      {bookmarks.length === 0 ? (
-                        <Text fontSize="sm" color="#999" textAlign="center" py={4}>
-                          No bookmarks yet. Create one in the "Current" tab.
-                        </Text>
-                      ) : (
-                        bookmarks.map((bookmark) => (
-                          <Box
-                            key={bookmark.id}
-                            p={3}
-                            bg="white"
-                            border="1px solid"
-                            borderColor="gray.300"
-                            borderRadius="md"
-                            _hover={{
-                              borderColor: "slate.500",
-                              shadow: "sm",
-                            }}
-                          >
-                            <HStack justify="space-between" align="start" mb={2}>
-                              <Text
-                                fontSize="sm"
-                                fontWeight="semibold"
-                                color="#3A3A3A"
-                                cursor="pointer"
-                                onClick={() => handleNavigateToBookmark(bookmark)}
-                              >
-                                {bookmark.name}
-                              </Text>
-                              <Button
-                                size="xs"
-                                variant="ghost"
-                                colorScheme="red"
-                                onClick={() => handleDeleteBookmark(bookmark.id)}
-                              >
-                                <Icon as={FiTrash2} />
-                              </Button>
-                            </HStack>
-                          </Box>
-                        ))
-                      )}
-                    </VStack>
-                  </ScrollArea.Content>
-                </ScrollArea.Viewport>
-                <ScrollArea.Scrollbar />
-              </ScrollArea.Root>
-            </Tabs.Content>
-          </Tabs.Root>
-        </Box>
-
-        {/* Main Content Area */}
-        <Box
-          flex={1}
-          display="flex"
-          flexDirection="column"
-          position={viewMode === "tree" ? "sticky" : "relative"}
-          top={viewMode === "tree" ? "32px" : "auto"}
-          height={viewMode === "tree" ? "calc(100vh - 160px)" : "auto"}
-        >
-
             {/* View Mode Switch */}
-            <Box
-              bg="white"
-              borderRadius="md"
-              mb={6}
-              shadow="sm"
-              flexShrink={0}
-            >
+            <Box bg="white" borderRadius="md" mb={6} shadow="sm" flexShrink={0}>
               {/* Explorer Header */}
               <Box p={4} borderBottom="1px solid" borderColor="gray.200">
                 <Heading fontSize="xl" fontWeight="semibold" color="#3A3A3A">
@@ -865,12 +907,16 @@ const handleStopRecording = async () => {
                   size="lg"
                   colorPalette="slate"
                   checked={viewMode === "tree"}
-                  onCheckedChange={(e) => setViewMode(e.checked ? "tree" : "conversation")}
+                  onCheckedChange={(e) =>
+                    setViewMode(e.checked ? "tree" : "conversation")
+                  }
                 >
                   <Switch.HiddenInput />
                   <Switch.Control>
                     <Switch.Thumb />
-                    <Switch.Indicator fallback={<Icon as={FiList} color="gray.600" />}>
+                    <Switch.Indicator
+                      fallback={<Icon as={FiList} color="gray.600" />}
+                    >
                       <Icon as={FiMap} color="slate.600" />
                     </Switch.Indicator>
                   </Switch.Control>
@@ -881,48 +927,49 @@ const handleStopRecording = async () => {
               </Box>
             </Box>
 
-            {currentNode && (
-              <>
-                {viewMode === "conversation" ? (
-                  <>
-                    <Heading
-                      fontSize="lg"
-                      fontWeight="bold"
-                      color="#3A3A3A"
-                      textTransform="uppercase"
-                      mb={3}
-                    >
-                      Last Statement
-                    </Heading>
-
-                {/* Current Statement */}
-                <Card.Root
-                  mb={6}
-                  bg="white"
-                  border="2px solid"
-                  borderColor={currentNode.party === "A" ? "slate.500" : "salmon.500"}
-                >
-                  <Card.Body>
-                    <VStack alignItems="flex-start" gap={3}>
-                      <Text fontSize="lg" color="#3A3A3A" lineHeight="1.6">
-                        {currentNode.statement}
-                      </Text>
-                    </VStack>
-                  </Card.Body>
-                </Card.Root>
-
-                {/* Loading State */}
-                {isLoading && (
-                  <Box textAlign="center" py={8}>
-                    <Spinner size="lg" color="slate" mb={4} />
-                    <Text fontSize="md" color="#666">
-                      Generating responses...
-                    </Text>
-                  </Box>
-                )}
-
-                {/* Response Options Section */}
+            {currentNode &&
+              (viewMode === "conversation" ? (
                 <>
+                  <Heading
+                    fontSize="lg"
+                    fontWeight="bold"
+                    color="#3A3A3A"
+                    textTransform="uppercase"
+                    mb={3}
+                  >
+                    Last Statement
+                  </Heading>
+
+                  {/* Current Statement */}
+                  <Card.Root
+                    mb={6}
+                    bg="white"
+                    border="2px solid"
+                    borderColor={
+                      currentNode.party === "A" ? "slate.500" : "salmon.500"
+                    }
+                  >
+                    <Card.Body>
+                      <VStack alignItems="flex-start" gap={3}>
+                        <Text fontSize="lg" color="#3A3A3A" lineHeight="1.6">
+                          {currentNode.statement}
+                        </Text>
+                      </VStack>
+                    </Card.Body>
+                  </Card.Root>
+
+                  {/* Loading State */}
+                  {isLoading && (
+                    <Box textAlign="center" py={8}>
+                      <Spinner size="lg" color="slate" mb={4} />
+                      <Text fontSize="md" color="#666">
+                        Generating responses...
+                      </Text>
+                    </Box>
+                  )}
+
+                  {/* Response Options Section */}
+
                   <HStack gap={1} align="center" mb={3}>
                     <Heading
                       fontSize="lg"
@@ -970,17 +1017,24 @@ const handleStopRecording = async () => {
                           cursor="pointer"
                           _hover={{
                             shadow: "md",
-                            borderColor: option.party === "A" ? "slate.600" : "salmon.600"
+                            borderColor:
+                              option.party === "A" ? "slate.600" : "salmon.600",
                           }}
                           transition="all 0.2s"
                           border="2px solid"
-                          borderColor={option.party === "A" ? "slate.500" : "salmon.500"}
+                          borderColor={
+                            option.party === "A" ? "slate.500" : "salmon.500"
+                          }
                           onClick={() =>
                             handleSelectPregeneratedResponse(option.id)
                           }
                         >
                           <Card.Body>
-                            <Text fontSize="md" color="#3A3A3A" lineHeight="1.6">
+                            <Text
+                              fontSize="md"
+                              color="#3A3A3A"
+                              lineHeight="1.6"
+                            >
                               {option.text}
                             </Text>
                           </Card.Body>
@@ -988,17 +1042,27 @@ const handleStopRecording = async () => {
                       ))}
 
                       {/* Custom Response Card */}
-                      <Card.Root bg="white" border="2px solid" borderColor="slate.500">
+                      <Card.Root
+                        bg="white"
+                        border="2px solid"
+                        borderColor="slate.500"
+                      >
                         <Card.Body>
                           <VStack alignItems="flex-start" gap={3}>
-                            <Text fontSize="sm" fontWeight="semibold" color="#3A3A3A">
+                            <Text
+                              fontSize="sm"
+                              fontWeight="semibold"
+                              color="#3A3A3A"
+                            >
                               Write Your Own
                             </Text>
 
                             <VStack align="stretch" gap={3} width="100%">
                               <Textarea
                                 value={customResponse}
-                                onChange={(e) => setCustomResponse(e.target.value)}
+                                onChange={(e) =>
+                                  setCustomResponse(e.target.value)
+                                }
                                 placeholder="Type your response here..."
                                 rows={4}
                                 resize="vertical"
@@ -1009,11 +1073,17 @@ const handleStopRecording = async () => {
                                 <Button
                                   size="sm"
                                   variant={isRecording ? "solid" : "outline"}
-                                  bg={isRecording ? "salmon.500" : "transparent"}
-                                  color={isRecording ? "white" : "darkGrey.text"}
-                                  borderColor={isRecording ? "salmon.500" : "darkGrey.text"}
+                                  bg={
+                                    isRecording ? "salmon.500" : "transparent"
+                                  }
+                                  color={
+                                    isRecording ? "white" : "darkGrey.text"
+                                  }
+                                  borderColor={
+                                    isRecording ? "salmon.500" : "darkGrey.text"
+                                  }
                                   _hover={{
-                                    bg: isRecording ? "salmon.600" : "gray.100"
+                                    bg: isRecording ? "salmon.600" : "gray.100",
                                   }}
                                   onClick={() => {
                                     if (isRecording) handleStopRecording()
@@ -1044,29 +1114,25 @@ const handleStopRecording = async () => {
                     </VStack>
                   )}
                 </>
-                  </>
-                ) : (
-                  <>
-                    {/* Tree Visualization View */}
-                    <Box
-                      bg="white"
-                      borderRadius="md"
-                      p={4}
-                      flex={1}
-                      width="100%"
-                      position="relative"
-                      minH={0}
-                    >
-                      <Flow simulationId={simulationId} />
-                    </Box>
-                  </>
-                )}
-              </>
-            )}
-        </Box>
-      </HStack>
+              ) : (
+                <>
+                  {/* Tree Visualization View */}
+                  <Box
+                    bg="white"
+                    borderRadius="md"
+                    p={4}
+                    flex={1}
+                    width="100%"
+                    position="relative"
+                    minH={0}
+                  >
+                    <Flow simulationId={simulationId} />
+                  </Box>
+                </>
+              ))}
+          </Box>
+        </HStack>
       </Container>
-
 
       {/* Save Scenario Modal */}
       <Dialog.Root

@@ -1,6 +1,7 @@
 import logging
 import secrets
 import warnings
+from pathlib import Path
 from typing import Annotated, Any, Literal
 
 from pydantic import (
@@ -14,14 +15,13 @@ from pydantic import (
 )
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing_extensions import Self
-from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent  # backend/
 ENV_PATH = BASE_DIR.parent / ".env"  # project-root/.env
 
-logger.info(f"Loading settings configuration:")
+logger.info("Loading settings configuration:")
 logger.info(f"  BASE_DIR: {BASE_DIR}")
 logger.info(f"  ENV_PATH: {ENV_PATH}")
 logger.info(f"  .env file exists: {ENV_PATH.exists()}")
@@ -101,7 +101,7 @@ class Settings(BaseSettings):
     def emails_enabled(self) -> bool:
         return bool(self.SMTP_HOST and self.EMAILS_FROM_EMAIL)
 
-    
+
     # Boson AI Configuration
     BOSON_API_KEY: str = ""
 
