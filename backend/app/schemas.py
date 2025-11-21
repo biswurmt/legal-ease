@@ -67,10 +67,10 @@ def messages_to_conversation(messages: list[Message]) -> ConversationResponse:
 class CaseWithTreeCount(BaseModel):
     id: int
     name: str
-    party_a: str
-    party_b: str
-    context: str
-    summary: str
+    party_a: str | None
+    party_b: str | None
+    context: str | None
+    summary: str | None
     last_modified: datetime
     scenario_count: int
 
