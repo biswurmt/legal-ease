@@ -1,50 +1,30 @@
-from fastapi import APIRouter, HTTPException, UploadFile, File, Form, Depends
-from fastapi.responses import StreamingResponse
-import base64
-import io
-import wave
-import os
-from openai import OpenAI
-from app.core.config import settings
-from app.core.db import engine
-from app.schemas import ScenariosTreeResponse
-from app.models import Simulation, Message
-from sqlmodel import Session, select
-from typing import Dict, Any
-import asyncio
 import concurrent.futures
+from typing import Any
+
+from fastapi import APIRouter, HTTPException
+from openai import OpenAI
+from sqlmodel import Session
+
+from app.core.clients import get_boson_client
+from app.models import Message
+from app.schemas import ScenariosTreeResponse
 
 router = APIRouter()
 
-# Database session dependency
-def get_session():
-    with Session(engine) as session:
-        yield session
-
-# Boson AI client configuration
-def get_boson_client():
-    """Get Boson AI client with proper error handling"""
-    if not settings.BOSON_API_KEY:
-        raise HTTPException(
-            status_code=500, 
-            detail="Boson API key not configured. Please set BOSON_API_KEY environment variable."
-        )
-    return OpenAI(api_key=settings.BOSON_API_KEY, base_url="https://hackathon.boson.ai/v1")
-
-def _create_tree_single(case_background: str, previous_statements: str, simulation_goal: str, last_message: str = None, client: OpenAI = None, system_message: str = None) -> Dict[str, Any]:
+def _create_tree_single(_case_background: str, _previous_statements: str, _simulation_goal: str, _last_message: str = None, client: OpenAI = None, system_message: str = None) -> dict[str, Any]:
     """
     Helper function to create a tree with a single API call.
     Returns the parsed result or None if parsing fails.
     """
     if client is None:
         client = get_boson_client()
-    
+
     # Create the conversation with the AI model
     messages = [
         {"role": "system", "content": system_message},
         {"role": "user", "content": "Generate the legal negotiation dialogue tree now."}
     ]
-    
+
     try:
         # Make API call to Qwen3-32B-thinking-Hackathon model
         response = client.chat.completions.create(
@@ -54,7 +34,7 @@ def _create_tree_single(case_background: str, previous_statements: str, simulati
             max_tokens=4000,
             response_format={"type": "json_object"}
         )
-        
+
         # Extract the response content
         tree_content = response.choices[0].message.content
 
@@ -66,10 +46,9 @@ def _create_tree_single(case_background: str, previous_statements: str, simulati
         return scenarios_response.model_dump()
     except Exception as e:
         # Return None if parsing fails
-        print(f"Failed to parse response: {str(e)}")
         return None
 
-def create_tree(case_background: str, previous_statements: str, simulation_goal: str, last_message: str = None, refresh: bool = False) -> Dict[str, Any]:
+def create_tree(case_background: str, previous_statements: str, simulation_goal: str, last_message: str = None, _refresh: bool = False) -> dict[str, Any]:
     """
     Create a tree of messages based on the case background and previous statements.
     Makes 3 parallel API calls and keeps the first valid response.
@@ -78,7 +57,7 @@ def create_tree(case_background: str, previous_statements: str, simulation_goal:
     try:
         # Get Boson AI client
         client = get_boson_client()
-        
+
         # Prepare the complete system message for legal simulation tree generation
         if last_message:
             # If continuing from a previous message, use that as Level 1
@@ -101,12 +80,12 @@ def create_tree(case_background: str, previous_statements: str, simulation_goal:
             level1_instruction += "- If the opposing side should initiate (e.g., they approach your client first, they have the burden, they sent an initial offer): speaker = \"B\"\n"
             level1_instruction += "The decision should be realistic based on negotiation dynamics and who is most likely to reach out first given the context.\n"
             special_note = ""
-            
+
             # For new conversations, alternate based on who speaks first
             # This will be determined dynamically by the model
             level2_instruction = "Level 2: Three possible responses. If Level 1 speaker is \"A\", Level 2 should be responses from \"B\". If Level 1 is \"B\", Level 2 should be responses from \"A\".\n"
             level3_instruction = "Level 3: For each Level 2 response, provide exactly three follow-up replies. The speaker should alternate: if Level 2 is from \"B\", Level 3 is from \"A\"; if Level 2 is from \"A\", Level 3 is from \"B\".\n"
-            
+
         system_message = (
             "You are an expert legal simulation generator. Your task is to create a realistic, branching dialogue tree for a legal negotiation scenario. You will be given a detailed case background and a specific simulation goal. Your output MUST be a single, valid JSON object and nothing else.\n\n"
             "[TASK_DEFINITION]\n"
@@ -164,14 +143,14 @@ def create_tree(case_background: str, previous_statements: str, simulation_goal:
             "}\n"
             "Each Level 2 response contains 3 Level 3 responses in its \"responses\" array."
         )
-        
+
         # Make 3 parallel API calls using ThreadPoolExecutor
         with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
             futures = [
                 executor.submit(_create_tree_single, case_background, previous_statements, simulation_goal, last_message, client, system_message)
                 for _ in range(3)
             ]
-            
+
             # Wait for the first valid result
             results = []
             for future in concurrent.futures.as_completed(futures):
@@ -182,7 +161,7 @@ def create_tree(case_background: str, previous_statements: str, simulation_goal:
                         f.cancel()
                     return result
                 results.append(result)
-        
+
         # If all 3 attempts failed, return error response
         return {
             "error": "All 3 parallel attempts failed to generate valid response",
@@ -195,78 +174,11 @@ def create_tree(case_background: str, previous_statements: str, simulation_goal:
                 "responses": []
             }
         }
-        
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error creating tree: {str(e)}")
 
-def save_tree_to_database(session: Session, case_id: int, tree_data: Dict[str, Any]) -> int:
-    """
-    Save the generated tree structure to the database.
-    Returns the tree_id of the created tree.
-    """
-    try:
-        # Create a new Tree record
-        tree = Simulation(case_id=case_id)
-        session.add(tree)
-        session.commit()
-        session.refresh(tree)
-        
-        # Get the scenarios_tree from the response
-        scenarios_tree = tree_data.get("scenarios_tree", {})
-        
-        # Save Level 1 message (root)
-        level1_msg = Message(
-            content=scenarios_tree.get("line", ""),
-            role=scenarios_tree.get("speaker", "A"),
-            simulation_id=tree.id,
-            parent_id=None,  # Root message has parent_id None
-            selected=True
-        )
-        session.add(level1_msg)
-        session.commit()
-        session.refresh(level1_msg)
-        
-        # Save Level 2 messages (B responses)
-        level2_messages = []
-        level2_responses = scenarios_tree.get("responses", [])
-        
-        for i, level2_response in enumerate(level2_responses):
-            level2_msg = Message(
-                content=level2_response.get("line", ""),
-                role=level2_response.get("speaker", "B"),
-                simulation_id=tree.id,
-                parent_id=level1_msg.id,
-                selected=True
-            )
-            session.add(level2_msg)
-            session.commit()
-            session.refresh(level2_msg)
-            level2_messages.append(level2_msg)
-        
-        # Save Level 3 messages (player follow-ups)
-        for i, level2_response in enumerate(level2_responses):
-            if i < len(level2_messages):
-                level2_msg = level2_messages[i]
-                level3_responses = level2_response.get("responses", [])
-                
-                for level3_response in level3_responses:
-                    level3_msg = Message(
-                        content=level3_response.get("line", ""),
-                        role=level3_response.get("speaker", "A"),
-                        simulation_id=tree.id,
-                        parent_id=level2_msg.id,
-                        selected=True
-                    )
-                    session.add(level3_msg)
-        
-        session.commit()
-        return tree.id
-        
-    except Exception as e:
-        session.rollback()
-        raise HTTPException(status_code=500, detail=f"Error saving tree to database: {str(e)}")
-
-def save_messages_to_tree(session: Session, case_id: int, tree_data: Dict[str, Any], existing_tree_id: int = None, last_message_id: int = None) -> bool:
+def save_messages_to_tree(session: Session, _case_id: int, tree_data: dict[str, Any], existing_tree_id: int = None, last_message_id: int = None) -> bool:
     """
     Save messages from tree generation to database.
     If no last_message_id, creates a new tree with level1 as root.
@@ -276,7 +188,7 @@ def save_messages_to_tree(session: Session, case_id: int, tree_data: Dict[str, A
     try:
         # Get the scenarios_tree from the response
         scenarios_tree = tree_data.get("scenarios_tree", {})
-        
+
         if last_message_id is None:
             # No last_message_id - create new tree with level1 as root
             # Save Level 1 message as root (parent_id=None)
@@ -290,11 +202,11 @@ def save_messages_to_tree(session: Session, case_id: int, tree_data: Dict[str, A
             session.add(level1_msg)
             session.commit()
             session.refresh(level1_msg)
-            
+
             # Save Level 2 messages (B responses)
             level2_messages = []
             level2_responses = scenarios_tree.get("responses", [])
-            
+
             for level2_response in level2_responses:
                 level2_msg = Message(
                     content=level2_response.get("line", ""),
@@ -307,13 +219,13 @@ def save_messages_to_tree(session: Session, case_id: int, tree_data: Dict[str, A
                 session.commit()
                 session.refresh(level2_msg)
                 level2_messages.append(level2_msg)
-            
+
             # Save Level 3 messages (player follow-ups)
             for i, level2_response in enumerate(level2_responses):
                 if i < len(level2_messages):
                     level2_msg = level2_messages[i]
                     level3_responses = level2_response.get("responses", [])
-                    
+
                     for level3_response in level3_responses:
                         level3_msg = Message(
                             content=level3_response.get("line", ""),
@@ -323,7 +235,7 @@ def save_messages_to_tree(session: Session, case_id: int, tree_data: Dict[str, A
                             selected=False  # Not selected by default
                         )
                         session.add(level3_msg)
-            
+
         else:
             # Existing history - append new messages as children of last_message_id
             last_message = session.get(Message, last_message_id)
@@ -331,11 +243,11 @@ def save_messages_to_tree(session: Session, case_id: int, tree_data: Dict[str, A
                 raise HTTPException(status_code=404, detail=f"Message with id {last_message_id} not found")
 
             level1_msg = last_message
-            
+
             # Save Level 2 messages (B responses)
             level2_messages = []
             level2_responses = scenarios_tree.get("responses", [])
-            
+
             for level2_response in level2_responses:
                 level2_msg = Message(
                     content=level2_response.get("line", ""),
@@ -348,13 +260,13 @@ def save_messages_to_tree(session: Session, case_id: int, tree_data: Dict[str, A
                 session.commit()
                 session.refresh(level2_msg)
                 level2_messages.append(level2_msg)
-            
+
             # Save Level 3 messages (player follow-ups)
             for i, level2_response in enumerate(level2_responses):
                 if i < len(level2_messages):
                     level2_msg = level2_messages[i]
                     level3_responses = level2_response.get("responses", [])
-                    
+
                     for level3_response in level3_responses:
                         level3_msg = Message(
                             content=level3_response.get("line", ""),
@@ -364,10 +276,10 @@ def save_messages_to_tree(session: Session, case_id: int, tree_data: Dict[str, A
                             selected=False  # Not selected by default
                         )
                         session.add(level3_msg)
-        
+
         session.commit()
         return True
-        
+
     except Exception as e:
         session.rollback()
         raise HTTPException(status_code=500, detail=f"Error saving messages to tree: {str(e)}")

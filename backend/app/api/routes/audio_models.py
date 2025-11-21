@@ -1,35 +1,17 @@
-import json
-
-from fastapi import APIRouter, HTTPException, UploadFile, File, Form
-from fastapi.responses import StreamingResponse, FileResponse
 import base64
-import io
-import wave
+import json
 import os
-from openai import OpenAI
-from app.core.config import settings
-from app.core.db import engine
-from app.crud import get_case_context, get_messages_by_tree, get_selected_messages_between
-from app.schemas import AudioResponse, ContextResponse, messages_to_conversation
+
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi.responses import FileResponse
 from sqlmodel import Session
-from fastapi import APIRouter, Depends
+
+from app.core.clients import get_boson_client
+from app.core.db import get_session
+from app.crud import get_case_context, get_messages_by_tree
+from app.schemas import AudioResponse, ContextResponse, messages_to_conversation
 
 router = APIRouter()
-
-# Boson AI client configuration
-def get_boson_client():
-    """Get Boson AI client with proper error handling"""
-    if not settings.BOSON_API_KEY:
-        raise HTTPException(
-            status_code=500, 
-            detail="Boson API key not configured. Please set BOSON_API_KEY environment variable."
-        )
-    return OpenAI(api_key=settings.BOSON_API_KEY, base_url="https://hackathon.boson.ai/v1")
-
-
-def get_session():
-    with Session(engine) as session:
-        yield session
 
 # audio helper
 def b64(path):
@@ -61,14 +43,14 @@ async def transcribe_audio(audio_file: UploadFile = File(...)):
     """
     if not audio_file.content_type or not audio_file.content_type.startswith("audio/"):
         raise HTTPException(status_code=400, detail="File must be an audio file")
-    
+
     try:
         # Read audio file content
         audio_content = await audio_file.read()
-        
+
         # Convert to base64 for Boson AI API
         audio_b64 = base64.b64encode(audio_content).decode("utf-8")
-        
+
         # Use Boson AI for audio understanding
         client = get_boson_client()
         response = client.chat.completions.create(
@@ -93,14 +75,14 @@ async def transcribe_audio(audio_file: UploadFile = File(...)):
         )
 
         transcribed_text = response.choices[0].message.content
-        
+
         return AudioResponse(
             message=transcribed_text
         )
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error processing audio: {str(e)}")
-    
+
 @router.post("/summarize-dialogue")
 async def summarize_dialogue(data: str, desired_length: int):
     """
@@ -123,7 +105,7 @@ async def summarize_dialogue(data: str, desired_length: int):
 
 
         return {"message": response.choices[0].message.content.split("\n")[4]}
-    
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error summarizing in get-headline: {str(e)}")
 
@@ -169,16 +151,13 @@ async def get_conversation_audio(tree_id: int, end_message_id: int, session: Ses
     """
 
     try:
-        # Get messages as raw data (not converted to conversation format)
-        messages_data = get_messages_by_tree(session, tree_id, end_message_id, to_conversation=False)
-        
         # Parse the conversation JSON to get the actual message content
         conversation_json = get_messages_by_tree(session, tree_id, end_message_id, to_conversation=True)
         conversation_data = json.loads(conversation_json)
-        
+
         tts_string = ""
         speaker = 0  # 0 is belinda, 1 is man_en. Pick this based on who you want to speak first.
-        
+
         # Extract statements from conversation data
         # The structure is: {"conversation": [{"party": "...", "statement": "..."}]}
         conversation_list = conversation_data.get("conversation", [])
@@ -195,7 +174,7 @@ async def get_conversation_audio(tree_id: int, end_message_id: int, session: Ses
         reference_path0 = os.path.join(app_dir, "sample_audios", "belinda.wav")
         reference_transcript0 = (
             "[SPEAKER0]"
-            "T'was the night before my birthday." 
+            "T'was the night before my birthday."
             "Hurray! It's almost here!"
             "It may not be a holiday, but it's the best day of the year."
         )
@@ -244,6 +223,6 @@ async def get_conversation_audio(tree_id: int, end_message_id: int, session: Ses
         audio_b64 = resp.choices[0].message.audio.data
         open(str(end_message_id) + ".wav", "wb").write(base64.b64decode(audio_b64))
         return FileResponse(str(end_message_id) + ".wav", media_type="audio/wav")
-    
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error processing conversation: {str(e)}")
