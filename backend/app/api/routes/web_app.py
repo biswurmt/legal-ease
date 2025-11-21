@@ -2,77 +2,47 @@ import json
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlmodel import Session, select, func
-from typing import List, Optional, Dict, Any
 from pydantic import BaseModel
+from sqlmodel import Session, func, select
 
-from app.api.routes.audio_models import get_session, summarize_background_helper, summarize_dialogue
-from app.crud import get_messages_by_tree, get_selected_messages_between, \
-    get_tree, delete_messages_after_children, get_message_children, \
-    update_message_selected, get_case_context, delete_messages_including_children, \
-    create_simulation, create_bookmark, get_bookmarks_by_simulation, delete_bookmark, \
-    format_case_background_for_llm
-from app.models import Message, Case, Simulation
-from app.schemas import TreeResponse, SimulationCreate, SimulationResponse, CaseWithTreeCount, \
-    BookmarkCreate, BookmarkResponse
+from app.api.routes.audio_models import (
+    get_session,
+    summarize_background_helper,
+    summarize_dialogue,
+)
 from app.api.routes.tree_generation import create_tree, save_messages_to_tree
+from app.crud import (
+    create_bookmark,
+    create_simulation,
+    delete_bookmark,
+    delete_messages_after_children,
+    delete_messages_including_children,
+    format_case_background_for_llm,
+    get_bookmarks_by_simulation,
+    get_case_context,
+    get_message_children,
+    get_messages_by_tree,
+    get_selected_messages_between,
+    get_tree,
+    update_message_selected,
+)
+from app.models import Case, Message, Simulation
+from app.schemas import (
+    BookmarkCreate,
+    BookmarkResponse,
+    CaseWithTreeCount,
+    SimulationCreate,
+    SimulationResponse,
+)
 
 router = APIRouter()
 
 
 class ContinueConversationRequest(BaseModel):
     case_id: int
-    message_id: Optional[int] = None
-    tree_id: Optional[int] = None
+    message_id: int | None = None
+    tree_id: int | None = None
     refresh: bool = False
-
-
-def get_last_message_id_from_tree(session: Session, tree_id: int) -> int:
-    """
-    Get the ID of the last selected message in a tree.
-    Returns the ID of the deepest selected message in the tree.
-    """
-    # Get all selected messages in the tree
-    statement = select(Message).where(
-        (Message.simulation_id == tree_id) & (Message.selected == True)
-    )
-    messages = session.exec(statement).all()
-
-    if not messages:
-        raise HTTPException(status_code=404, detail=f"No selected messages found in tree {tree_id}")
-
-    # Find the deepest selected message (the one with no selected children)
-    for msg in messages:
-        # Check if this message has any selected children
-        has_selected_children = session.exec(
-            select(Message).where(
-                (Message.parent_id == msg.id) & (Message.selected == True)
-            )
-        ).first() is not None
-
-        if not has_selected_children:
-            return msg.id
-
-    # Fallback: return the message with the highest ID
-    return max(msg.id for msg in messages)
-
-def is_leaf_node(session: Session, message_id: int) -> bool:
-    """
-    Check if a message is a leaf node (has no children).
-    Returns True if the message has no children, False otherwise.
-    """
-    children_stmt = select(Message).where(Message.parent_id == message_id)
-    children = session.exec(children_stmt).all()
-    return len(children) == 0
-
-def get_message_children_for_tree(session: Session, message_id: int) -> list[Message]:
-    """
-    Get all direct children of a message.
-    Returns a list of Message objects that are direct children of the given message.
-    """
-    children_stmt = select(Message).where(Message.parent_id == message_id)
-    children = session.exec(children_stmt).all()
-    return children
 
 
 @router.post("/continue-conversation")
@@ -133,7 +103,7 @@ async def continue_conversation(request: ContinueConversationRequest, session: S
         raise HTTPException(status_code=500, detail=f"Error continuing conversation: {str(e)}")
 
 
-@router.get("/trees/{simulation_id}/messages", response_model=List[dict])
+@router.get("/trees/{simulation_id}/messages", response_model=list[dict])
 def get_tree_messages_endpoint(
     simulation_id: int,
     session: Session = Depends(get_session),
@@ -150,14 +120,14 @@ def get_tree_messages_endpoint(
         raise HTTPException(status_code=404, detail="No messages found for this simulation_id")
 
     # Build mapping for hierarchy
-    by_parent: dict[Optional[int], list[Message]] = {}
+    by_parent: dict[int | None, list[Message]] = {}
     for m in messages:
         by_parent.setdefault(m.parent_id, []).append(m)
 
     for children in by_parent.values():
         children.sort(key=lambda m: m.id)
 
-    def build_tree(parent_id: Optional[int]) -> List[dict]:
+    def build_tree(parent_id: int | None) -> list[dict]:
         """Recursive builder for JSON hierarchy."""
         result = []
         for msg in by_parent.get(parent_id, []):
@@ -173,7 +143,7 @@ def get_tree_messages_endpoint(
     return tree_json
 
 
-@router.get("/messages/selected-path", response_model=List[dict])
+@router.get("/messages/selected-path", response_model=list[dict])
 def get_selected_messages_path(
     start_id: int = Query(..., description="Starting message ID"),
     end_id: int = Query(..., description="Ending message ID"),
@@ -224,7 +194,7 @@ def trim_messages_after_children(
     }
 
 
-@router.get("/messages/{message_id}/children", response_model=List[Message])
+@router.get("/messages/{message_id}/children", response_model=list[Message])
 def get_children(message_id: int, db: Session = Depends(get_session)):
     """Get all direct children of a message."""
     children = get_message_children(db, message_id)
@@ -286,7 +256,7 @@ async def create_summarized_message(
         # Summarize the user input
         summary_result = await summarize_dialogue(request.user_input, request.desired_length)
         summarized_content = summary_result.get("message", "") if summary_result.get("message") else request.user_input
-        
+
         # Create the message
         new_message = Message(
             simulation_id=request.simulation_id,
@@ -305,9 +275,9 @@ async def create_summarized_message(
 
 class CaseCreate(BaseModel):
     name: str
-    party_a: Optional[str] = None
-    party_b: Optional[str] = None
-    context: Optional[str] = None
+    party_a: str | None = None
+    party_b: str | None = None
+    context: str | None = None
 
 @router.post("/cases", response_model=CaseWithTreeCount)
 async def create_case(
@@ -330,7 +300,7 @@ async def create_case(
         })
 
     summary = ""
-    
+
     # Create new case
     new_case = Case(
         name=case_data.name,
@@ -344,7 +314,7 @@ async def create_case(
     db.add(new_case)
     db.commit()
     db.refresh(new_case)
-    
+
     # Return with scenario count of 0
     return CaseWithTreeCount(
         id=new_case.id,
@@ -357,7 +327,7 @@ async def create_case(
         scenario_count=0
     )
 
-@router.get("/cases", response_model=List[CaseWithTreeCount])
+@router.get("/cases", response_model=list[CaseWithTreeCount])
 def get_all_cases(db: Session = Depends(get_session)):
     """Return all cases with the number of trees for each case."""
     cases = db.exec(select(Case)).all()
@@ -460,10 +430,10 @@ def delete_case(
 
 
 class CaseUpdate(BaseModel):
-    party_a: Optional[str] = None
-    party_b: Optional[str] = None
-    key_issues: Optional[str] = None
-    general_notes: Optional[str] = None
+    party_a: str | None = None
+    party_b: str | None = None
+    key_issues: str | None = None
+    general_notes: str | None = None
 
 
 @router.patch("/cases/{case_id}")
@@ -499,30 +469,30 @@ async def update_case(
         if "party_A" not in background_data["parties"]:
             background_data["parties"]["party_A"] = {}
         background_data["parties"]["party_A"]["name"] = case_update.party_a
-    
+
     if case_update.party_b is not None:
         if "parties" not in background_data:
             background_data["parties"] = {}
         if "party_B" not in background_data["parties"]:
             background_data["parties"]["party_B"] = {}
         background_data["parties"]["party_B"]["name"] = case_update.party_b
-    
+
     if case_update.key_issues is not None:
         background_data["key_issues"] = case_update.key_issues
-    
+
     if case_update.general_notes is not None:
         background_data["general_notes"] = case_update.general_notes
 
     # Save updated context
     case.context = json.dumps(background_data)
     case.last_modified = datetime.now()
-    
+
     # Regenerate summary based on updated context
     try:
         case.summary = await summarize_background_helper(case.context, desired_lines=30)
-    except Exception as e:
+    except Exception:
         case.summary = ""
-    
+
     session.add(case)
     session.commit()
     session.refresh(case)
@@ -627,7 +597,7 @@ def create_bookmark_endpoint(
         raise HTTPException(status_code=500, detail=f"Error creating bookmark: {str(e)}")
 
 
-@router.get("/bookmarks/{simulation_id}", response_model=List[BookmarkResponse])
+@router.get("/bookmarks/{simulation_id}", response_model=list[BookmarkResponse])
 def get_bookmarks_by_simulation_endpoint(
     simulation_id: int,
     db: Session = Depends(get_session)

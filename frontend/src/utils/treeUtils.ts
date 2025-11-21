@@ -2,7 +2,6 @@
 
 import type {
   DialogueNode,
-  BackendTreeNode,
   Party,
   TreeMessagesResponse,
 } from "@/types/scenario"
@@ -18,7 +17,8 @@ export function getPartyFromRole(role: string): Party {
   // Direct A/B matching (primary format from backend)
   if (normalizedRole === "A") {
     return "A"
-  } else if (normalizedRole === "B") {
+  }
+  if (normalizedRole === "B") {
     return "B"
   }
 
@@ -26,7 +26,8 @@ export function getPartyFromRole(role: string): Party {
   const lowerRole = role.toLowerCase()
   if (lowerRole === "user" || lowerRole === "party a") {
     return "A"
-  } else if (lowerRole === "assistant" || lowerRole === "party b") {
+  }
+  if (lowerRole === "assistant" || lowerRole === "party b") {
     return "B"
   }
 
@@ -39,7 +40,7 @@ export function getPartyFromRole(role: string): Party {
  */
 export function messageToDialogueNode(
   message: TreeMessagesResponse,
-  includeChildren = true
+  includeChildren = true,
 ): DialogueNode {
   const node: DialogueNode = {
     id: String(message.id),
@@ -52,7 +53,7 @@ export function messageToDialogueNode(
 
   if (includeChildren && message.children) {
     node.children = message.children.map((child) =>
-      messageToDialogueNode(child, true)
+      messageToDialogueNode(child, true),
     )
   }
 
@@ -65,7 +66,7 @@ export function messageToDialogueNode(
  * @returns Root DialogueNode
  */
 export function buildDialogueTreeFromMessages(
-  messages: TreeMessagesResponse[]
+  messages: TreeMessagesResponse[],
 ): DialogueNode | null {
   if (!messages || messages.length === 0) {
     return null
@@ -88,7 +89,7 @@ export function buildDialogueTreeFromMessages(
  */
 export function findNodeInTree(
   tree: DialogueNode | null,
-  nodeId: string
+  nodeId: string,
 ): DialogueNode | null {
   if (!tree) return null
   if (tree.id === nodeId) return tree
@@ -130,7 +131,7 @@ export function getSelectedPath(tree: DialogueNode | null): DialogueNode[] {
  */
 export function getPathToNode(
   tree: DialogueNode | null,
-  targetId: string
+  targetId: string,
 ): DialogueNode[] {
   if (!tree) return []
   if (tree.id === targetId) return [tree]
@@ -147,69 +148,6 @@ export function getPathToNode(
 }
 
 /**
- * Convert BackendTreeNode (from TreeResponse) to DialogueNode structure
- * Used when merging new branches from continue-conversation API
- */
-export function treeNodeToDialogueNode(
-  node: BackendTreeNode,
-  parentId: string,
-  indexInSiblings: number
-): DialogueNode {
-  // Generate a temporary ID for new nodes (will be replaced with real IDs from backend)
-  const nodeId = `${parentId}-child-${indexInSiblings}`
-
-  const dialogueNode: DialogueNode = {
-    id: nodeId,
-    statement: node.line,
-    party: getPartyFromRole(node.speaker),
-    role: node.speaker,
-    selected: false,
-    children: [],
-  }
-
-  if (node.responses && node.responses.length > 0) {
-    dialogueNode.children = node.responses.map((response, idx) =>
-      treeNodeToDialogueNode(response, nodeId, idx)
-    )
-  }
-
-  return dialogueNode
-}
-
-/**
- * Merge new branches from TreeResponse into existing tree at a specific node
- * @param tree - Existing DialogueNode tree
- * @param parentNodeId - ID of the node where new children should be added
- * @param newBranches - BackendTreeNode from API response
- * @returns Updated tree
- */
-export function mergeBranchesIntoTree(
-  tree: DialogueNode,
-  parentNodeId: string,
-  newBranches: BackendTreeNode
-): DialogueNode {
-  if (tree.id === parentNodeId) {
-    // Found the parent - add new children
-    const newChildren = newBranches.responses.map((response, idx) =>
-      treeNodeToDialogueNode(response, parentNodeId, idx)
-    )
-
-    return {
-      ...tree,
-      children: [...tree.children, ...newChildren],
-    }
-  }
-
-  // Recursively search children
-  return {
-    ...tree,
-    children: tree.children.map((child) =>
-      mergeBranchesIntoTree(child, parentNodeId, newBranches)
-    ),
-  }
-}
-
-/**
  * Update selected flags in the tree
  * Marks a specific node and its ancestors as selected
  * @param tree - Root DialogueNode
@@ -218,7 +156,7 @@ export function mergeBranchesIntoTree(
  */
 export function updateSelectedPath(
   tree: DialogueNode,
-  targetId: string
+  targetId: string,
 ): DialogueNode {
   const path = getPathToNode(tree, targetId)
   const selectedIds = new Set(path.map((node) => node.id))
@@ -232,62 +170,6 @@ export function updateSelectedPath(
   }
 
   return updateNode(tree)
-}
-
-/**
- * Add a custom message node to the tree
- * @param tree - Existing tree
- * @param parentId - Parent node ID
- * @param messageId - New message ID from backend
- * @param content - Message content
- * @param role - Message role
- * @returns Updated tree
- */
-export function addCustomMessageToTree(
-  tree: DialogueNode,
-  parentId: string,
-  messageId: number,
-  content: string,
-  role: string
-): DialogueNode {
-  if (tree.id === parentId) {
-    const newNode: DialogueNode = {
-      id: String(messageId),
-      statement: content,
-      party: getPartyFromRole(role),
-      role: role,
-      selected: true,
-      children: [],
-    }
-
-    return {
-      ...tree,
-      children: [...tree.children, newNode],
-    }
-  }
-
-  return {
-    ...tree,
-    children: tree.children.map((child) =>
-      addCustomMessageToTree(child, parentId, messageId, content, role)
-    ),
-  }
-}
-
-/**
- * Get the leaf node of the selected path
- * @param tree - Root DialogueNode
- * @returns The last selected node (leaf of selected path)
- */
-export function getSelectedLeafNode(tree: DialogueNode | null): DialogueNode | null {
-  if (!tree) return null
-
-  const selectedChild = tree.children.find((child) => child.selected)
-  if (selectedChild) {
-    return getSelectedLeafNode(selectedChild)
-  }
-
-  return tree
 }
 
 /**

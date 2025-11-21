@@ -1,11 +1,8 @@
 """
 Integration tests for Case CRUD operations.
 """
-import pytest
 from fastapi.testclient import TestClient
 from sqlmodel import Session
-
-from app.models import Case
 
 
 def test_create_case(client: TestClient, db: Session) -> None:

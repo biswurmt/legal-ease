@@ -1,9 +1,9 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router"
 import {
   Box,
   Button,
   Card,
   Container,
+  Dialog,
   Heading,
   Icon,
   IconButton,
@@ -12,12 +12,11 @@ import {
   Text,
   VStack,
 } from "@chakra-ui/react"
-import { Dialog } from "@chakra-ui/react"
+import { createFileRoute, useNavigate } from "@tanstack/react-router"
 import { useEffect, useState } from "react"
-import { FiX, FiTrash2 } from "react-icons/fi"
-import { DefaultService } from "../client"
+import { FiTrash2, FiX } from "react-icons/fi"
 import { toaster } from "@/components/ui/toaster"
-
+import { DefaultService } from "../client"
 
 export const Route = createFileRoute("/cases")({
   component: CasesPage,
@@ -39,10 +38,7 @@ function CasesPage() {
 
   const [cases, setCases] = useState<Case[]>([])
 
-
-
-
-    useEffect(() => {
+  useEffect(() => {
     DefaultService.getAllCases()
       .then((data: any) => {
         const cases = data.map((c: any) => ({
@@ -58,8 +54,6 @@ function CasesPage() {
 
   const handleNewCase = () => setIsNewCaseModalOpen(true)
 
-
-
   const handleCreateCase = async () => {
     if (newCaseTitle.trim()) {
       try {
@@ -73,12 +67,15 @@ function CasesPage() {
         })
 
         // Add to local state
-        setCases([...cases, {
-          id: String(newCase.id),
-          name: newCase.name,
-          last_modified: new Date(newCase.last_modified),
-          scenario_count: newCase.scenario_count,
-        }])
+        setCases([
+          ...cases,
+          {
+            id: String(newCase.id),
+            name: newCase.name,
+            last_modified: new Date(newCase.last_modified),
+            scenario_count: newCase.scenario_count,
+          },
+        ])
 
         setIsNewCaseModalOpen(false)
         setNewCaseTitle("")
@@ -114,13 +111,15 @@ function CasesPage() {
       await DefaultService.deleteCase({ caseId: Number(caseToDelete.id) })
 
       // Remove from local state
-      setCases(cases.filter(c => c.id !== caseToDelete.id))
+      setCases(cases.filter((c) => c.id !== caseToDelete.id))
 
       toaster.create({
         title: "Case deleted",
         description: `"${caseToDelete.name}" has been deleted successfully.`,
         type: "success",
       })
+
+      setCaseToDelete(null)
     } catch (error) {
       console.error("Error deleting case:", error)
       toaster.create({
@@ -128,9 +127,6 @@ function CasesPage() {
         description: "Failed to delete case. Please try again.",
         type: "error",
       })
-    } finally {
-      setIsDeleteDialogOpen(false)
-      setCaseToDelete(null)
     }
   }
 
@@ -142,12 +138,7 @@ function CasesPage() {
   return (
     <Box minHeight="100vh" bg="#F4ECD8" py={8}>
       <Container maxW="1200px">
-        <Heading
-          fontSize="4xl"
-          fontWeight="semibold"
-          color="#3A3A3A"
-          mb={8}
-        >
+        <Heading fontSize="4xl" fontWeight="semibold" color="#3A3A3A" mb={8}>
           Case Library
         </Heading>
 
@@ -177,11 +168,14 @@ function CasesPage() {
                   <VStack alignItems="flex-start" gap={2} flex={1}>
                     <Text fontSize="med" color="#666">
                       Last modified:{" "}
-                      {new Date(caseItem.last_modified).toLocaleDateString("en-US", {
-                        month: "short",
-                        day: "numeric",
-                        year: "numeric",
-                      })}
+                      {new Date(caseItem.last_modified).toLocaleDateString(
+                        "en-US",
+                        {
+                          month: "short",
+                          day: "numeric",
+                          year: "numeric",
+                        },
+                      )}
                     </Text>
                     <Text fontSize="med" color="#666">
                       {caseItem.scenario_count}{" "}
@@ -225,7 +219,7 @@ function CasesPage() {
                 alignItems="center"
               >
                 <Text fontSize="6xl" color="#3A3A3A">
-                 +
+                  +
                 </Text>
               </VStack>
             </Card.Body>
@@ -259,7 +253,12 @@ function CasesPage() {
             <Dialog.Body>
               <VStack gap={4} alignItems="flex-start" width="100%">
                 <Box width="100%">
-                  <Text fontSize="sm" fontWeight="medium" color="#3A3A3A" mb={2}>
+                  <Text
+                    fontSize="sm"
+                    fontWeight="medium"
+                    color="#3A3A3A"
+                    mb={2}
+                  >
                     Case Title
                   </Text>
                   <Input
@@ -291,46 +290,14 @@ function CasesPage() {
       </Dialog.Root>
 
       {/* Delete Confirmation Dialog */}
-      <Dialog.Root
-        open={isDeleteDialogOpen}
-        onOpenChange={(e) => setIsDeleteDialogOpen(e.open)}
-      >
-        <Dialog.Backdrop />
-        <Dialog.Positioner>
-          <Dialog.Content>
-            <Dialog.Header>
-              <Dialog.Title>Delete Case</Dialog.Title>
-              <Dialog.CloseTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={handleCancelDelete}
-                  position="absolute"
-                  top={4}
-                  right={4}
-                >
-                  <Icon as={FiX} />
-                </Button>
-              </Dialog.CloseTrigger>
-            </Dialog.Header>
-            <Dialog.Body>
-              <Text>
-                Are you sure you want to delete "{caseToDelete?.name}"? This will also delete all associated simulations, messages, and documents. This action cannot be undone.
-              </Text>
-            </Dialog.Body>
-            <Dialog.Footer>
-              <Button
-                bg="red.600"
-                color="white"
-                _hover={{ bg: "red.700" }}
-                onClick={handleConfirmDelete}
-              >
-                Delete
-              </Button>
-            </Dialog.Footer>
-          </Dialog.Content>
-        </Dialog.Positioner>
-      </Dialog.Root>
+      <DeleteConfirmationDialog
+        isOpen={isDeleteDialogOpen}
+        onClose={handleCancelDelete}
+        onConfirm={handleConfirmDelete}
+        itemName={caseToDelete?.name || ""}
+        itemType="Case"
+        warningMessage="This will also delete all associated simulations, messages, and documents. This action cannot be undone."
+      />
     </Box>
   )
 }

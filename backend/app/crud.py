@@ -1,16 +1,9 @@
-import uuid
-from fastapi import FastAPI, HTTPException, Depends
-from typing import Any
 
-from sqlmodel import Session, select
+from fastapi import HTTPException
+from sqlmodel import Session, delete, select
 
-from app.core.security import get_password_hash, verify_password
-from app.models import Item, ItemCreate, User, UserCreate, UserUpdate, Case, \
-    Message, Simulation, Bookmark
-from app.schemas import SimulationCreate, BookmarkCreate
-from app.schemas import messages_to_conversation
-from sqlmodel import Session, select, delete
-from typing import List, Optional
+from app.models import Bookmark, Case, Message, Simulation
+from app.schemas import BookmarkCreate, SimulationCreate, messages_to_conversation
 
 
 def get_case_context(session: Session, case_id: int) -> str | None:
@@ -27,22 +20,22 @@ def format_case_background_for_llm(context_json: str) -> str:
         background_data = json.loads(context_json)
     except Exception:
         background_data = {}
-    
+
     # Extract parties
     party_a = background_data.get("parties", {}).get("party_A", {}).get("name", "Unknown Party")
     party_b = background_data.get("parties", {}).get("party_B", {}).get("name", "Unknown Party")
     key_issues = background_data.get("key_issues", "") or "Not specified"
     general_notes = background_data.get("general_notes", "") or "Not specified"
-    
+
     # Format into readable string - always provide all fields
-    formatted = f"Case Background:\n\n"
-    formatted += f"Parties:\n"
+    formatted = "Case Background:\n\n"
+    formatted += "Parties:\n"
     formatted += f"  Party A: {party_a}\n"
     formatted += f"  Party B: {party_b}\n\n"
-    
+
     formatted += f"Key Issues:\n{key_issues}\n\n"
     formatted += f"General Notes:\n{general_notes}\n"
-    
+
     return formatted
 
 
@@ -50,12 +43,12 @@ def format_case_background_for_llm(context_json: str) -> str:
 def get_messages_by_tree(session: Session, tree_id: int, message_id: int = None, to_conversation=True):
     """Retrieve messages from message_id up to the root in hierarchical order.
     If message_id is None, returns all messages in the tree."""
-    
+
     if message_id is not None:
         # Traverse up from the given message to the root
         ordered = []
         current_id = message_id
-        
+
         while current_id is not None:
             message = session.get(Message, current_id)
             if not message:
@@ -146,52 +139,6 @@ def get_tree(session: Session, tree_id: int) -> list[Message]:
     return ordered
 
 
-def create_user(*, session: Session, user_create: UserCreate) -> User:
-    db_obj = User.model_validate(
-        user_create, update={"hashed_password": get_password_hash(user_create.password)}
-    )
-    session.add(db_obj)
-    session.commit()
-    session.refresh(db_obj)
-    return db_obj
-
-
-def update_user(*, session: Session, db_user: User, user_in: UserUpdate) -> Any:
-    user_data = user_in.model_dump(exclude_unset=True)
-    extra_data = {}
-    if "password" in user_data:
-        password = user_data["password"]
-        hashed_password = get_password_hash(password)
-        extra_data["hashed_password"] = hashed_password
-    db_user.sqlmodel_update(user_data, update=extra_data)
-    session.add(db_user)
-    session.commit()
-    session.refresh(db_user)
-    return db_user
-
-
-def get_user_by_email(*, session: Session, email: str) -> User | None:
-    statement = select(User).where(User.email == email)
-    session_user = session.exec(statement).first()
-    return session_user
-
-
-def authenticate(*, session: Session, email: str, password: str) -> User | None:
-    db_user = get_user_by_email(session=session, email=email)
-    if not db_user:
-        return None
-    if not verify_password(password, db_user.hashed_password):
-        return None
-    return db_user
-
-
-def create_item(*, session: Session, item_in: ItemCreate, owner_id: uuid.UUID) -> Item:
-    db_item = Item.model_validate(item_in, update={"owner_id": owner_id})
-    session.add(db_item)
-    session.commit()
-    session.refresh(db_item)
-    return db_item
-
 def get_selected_messages_between(
     session: Session, start_id: int, end_id: int
 ) -> list[Message]:
@@ -202,7 +149,7 @@ def get_selected_messages_between(
 
     statement = (
         select(Message)
-        .where(Message.selected == True)
+        .where(Message.selected)
         .where(Message.id >= start_id)
         .where(Message.id <= end_id)
         .order_by(Message.id)
@@ -226,10 +173,10 @@ def delete_messages_including_children(session: Session, message_id: int) -> boo
     for child in children:
         delete_messages_including_children(session, child.id)
         session.delete(child)  # Delete the child itself after its descendants
-    
+
     try:
         session.commit()
-    except Exception as e:
+    except Exception:
         session.rollback()
         return False
 
@@ -270,7 +217,7 @@ def delete_messages_after_children(session: Session, message_id: int) -> int:
 
 
 
-def get_message_children(db: Session, message_id: int) -> List[Message]:
+def get_message_children(db: Session, message_id: int) -> list[Message]:
     """Return all direct children of a message."""
     query = select(Message).where(Message.parent_id == message_id)
     results = db.exec(query).all()
@@ -288,15 +235,7 @@ def update_message_selected(db: Session, message_id: int) -> Message:
     if not message:
         raise HTTPException(status_code=404, detail="Message not found")
 
-    # # 1️⃣ Check if message has children (must be a leaf)
-    # has_children = db.exec(select(Message).where(Message.parent_id == message_id)).first() is not None
-    # if has_children:
-    #     raise HTTPException(
-    #         status_code=400,
-    #         detail="Cannot select this message because it has child messages"
-    #     )
-
-    # 2️⃣ Check if parent exists and is selected (must be on active branch)
+    # Check if parent exists and is selected (must be on active branch)
     if message.parent_id is not None:
         parent = db.get(Message, message.parent_id)
         if not parent or not parent.selected:
@@ -305,14 +244,14 @@ def update_message_selected(db: Session, message_id: int) -> Message:
                 detail="Cannot select this message because its parent is not selected"
             )
 
-    # 3️⃣ Check if siblings already selected (same parent_id)
+    # Check if siblings already selected (same parent_id)
     sibling_query = select(Message).where(
         (Message.parent_id == message.parent_id)
         if message.parent_id is not None
         else Message.parent_id.is_(None),
         Message.id != message_id,
         Message.simulation_id == message.simulation_id,
-        Message.selected == True
+        Message.selected
     )
     selected_sibling = db.exec(sibling_query).first()
     if selected_sibling:
@@ -335,7 +274,7 @@ def create_simulation(*, session: Session, simulation_create: SimulationCreate) 
     case = session.get(Case, simulation_create.case_id)
     if not case:
         raise HTTPException(status_code=404, detail=f"Case with id {simulation_create.case_id} not found")
-    
+
     simulation = Simulation(
         headline=simulation_create.headline,
         brief=simulation_create.brief,
@@ -353,12 +292,12 @@ def create_bookmark(*, session: Session, bookmark_create: BookmarkCreate) -> Boo
     simulation = session.get(Simulation, bookmark_create.simulation_id)
     if not simulation:
         raise HTTPException(status_code=404, detail=f"Simulation with id {bookmark_create.simulation_id} not found")
-    
+
     # Check if message exists
     message = session.get(Message, bookmark_create.message_id)
     if not message:
         raise HTTPException(status_code=404, detail=f"Message with id {bookmark_create.message_id} not found")
-    
+
     # Check if bookmark already exists
     existing_bookmark = session.exec(
         select(Bookmark).where(
@@ -366,10 +305,10 @@ def create_bookmark(*, session: Session, bookmark_create: BookmarkCreate) -> Boo
             Bookmark.message_id == bookmark_create.message_id
         )
     ).first()
-    
+
     if existing_bookmark:
         raise HTTPException(status_code=400, detail="Bookmark already exists for this message in this simulation")
-    
+
     bookmark = Bookmark(
         simulation_id=bookmark_create.simulation_id,
         message_id=bookmark_create.message_id,
@@ -391,7 +330,7 @@ def delete_bookmark(*, session: Session, bookmark_id: int) -> bool:
     bookmark = session.get(Bookmark, bookmark_id)
     if not bookmark:
         raise HTTPException(status_code=404, detail=f"Bookmark with id {bookmark_id} not found")
-    
+
     session.delete(bookmark)
     session.commit()
     return True

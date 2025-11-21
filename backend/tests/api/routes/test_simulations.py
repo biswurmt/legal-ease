@@ -1,7 +1,6 @@
 """
 Integration tests for Simulation CRUD operations.
 """
-import pytest
 from fastapi.testclient import TestClient
 from sqlmodel import Session
 

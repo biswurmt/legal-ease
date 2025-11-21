@@ -1,8 +1,10 @@
+import { Box, Breadcrumb, Container, HStack, Image } from "@chakra-ui/react"
 import { useLocation, useNavigate } from "@tanstack/react-router"
-import { Box, Container, HStack, Image } from "@chakra-ui/react"
-import { Breadcrumb } from "@chakra-ui/react"
 import { Fragment, useEffect, useState } from "react"
-import { getCaseWithSimulations, getSimulation } from "@/services/scenarioService"
+import {
+  getCaseWithSimulations,
+  getSimulation,
+} from "@/services/scenarioService"
 
 interface BreadcrumbItem {
   label: string
@@ -19,7 +21,11 @@ export default function Header() {
   // Fetch case data when on case or scenario page
   useEffect(() => {
     const pathname = location.pathname
-    const search = location.search as { id?: string; caseId?: number; simulationId?: number }
+    const search = location.search as {
+      id?: string
+      caseId?: number
+      simulationId?: number
+    }
 
     let caseId: number | undefined
 
@@ -73,13 +79,21 @@ export default function Header() {
     }
 
     // Add Cases if we're on cases, case, or scenario pages
-    if (pathname === "/cases" || pathname === "/case" || pathname === "/scenario") {
+    if (
+      pathname === "/cases" ||
+      pathname === "/case" ||
+      pathname === "/scenario"
+    ) {
       items.push({ label: "Cases", path: "/cases" })
     }
 
     // Add Case if we're on case or scenario page
     if (pathname === "/case" || pathname === "/scenario") {
-      const search = location.search as { id?: string; caseId?: number; simulationId?: number }
+      const search = location.search as {
+        id?: string
+        caseId?: number
+        simulationId?: number
+      }
       let caseId: string | undefined
 
       if (pathname === "/scenario") {
@@ -145,7 +159,9 @@ export default function Header() {
                   <Fragment key={index}>
                     <Breadcrumb.Item>
                       {isLast ? (
-                        <Breadcrumb.CurrentLink>{item.label}</Breadcrumb.CurrentLink>
+                        <Breadcrumb.CurrentLink>
+                          {item.label}
+                        </Breadcrumb.CurrentLink>
                       ) : (
                         <Breadcrumb.Link
                           onClick={() => handleBreadcrumbClick(item)}

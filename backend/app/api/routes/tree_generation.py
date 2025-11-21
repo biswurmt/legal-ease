@@ -44,7 +44,7 @@ def _create_tree_single(_case_background: str, _previous_statements: str, _simul
         # Validate the response structure
         scenarios_response = ScenariosTreeResponse(**tree_data)
         return scenarios_response.model_dump()
-    except Exception as e:
+    except Exception:
         # Return None if parsing fails
         return None
 

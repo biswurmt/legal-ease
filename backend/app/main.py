@@ -1,4 +1,5 @@
 import logging
+
 import sentry_sdk
 from fastapi import FastAPI
 from fastapi.routing import APIRoute
@@ -27,7 +28,7 @@ app = FastAPI(
 
 # Set all CORS enabled origins
 if settings.all_cors_origins:
-    logger.info(f"CORS Configuration:")
+    logger.info("CORS Configuration:")
     logger.info(f"  ENVIRONMENT: {settings.ENVIRONMENT}")
     logger.info(f"  FRONTEND_HOST: {settings.FRONTEND_HOST}")
     logger.info(f"  BACKEND_CORS_ORIGINS: {settings.BACKEND_CORS_ORIGINS}")

@@ -1,30 +1,21 @@
 // Types for Scenario Explorer / Simulation Page
+import type { MessageRole } from "./api"
 
 // Frontend DialogueNode structure (existing in scenario.tsx)
 export type Party = "A" | "B"
 
 export interface DialogueNode {
-  id: string
+  readonly id: string
   statement: string
-  party: Party
+  readonly party: Party
   children: DialogueNode[]
-  role?: string // Backend role (user, assistant, system)
+  readonly role?: MessageRole // Backend role (user, assistant, system)
   selected?: boolean // Track if this node is on the selected path
 }
 
-export interface ResponseOption {
-  id: string
+// Derive ResponseOption from DialogueNode instead of duplicating
+export type ResponseOption = Pick<DialogueNode, "id" | "party"> & {
   text: string
-  party: Party
-}
-
-// Backend Message structure (from API)
-export interface BackendMessage {
-  id: number
-  content: string
-  role: string
-  selected: boolean
-  children: BackendMessage[]
 }
 
 // Backend TreeNode structure (from TreeResponse)
@@ -39,7 +30,7 @@ export interface BackendTreeNode {
 // API response types
 export interface TreeMessagesResponse {
   id: number
-  role: string
+  role: MessageRole
   content: string
   selected: boolean
   children: TreeMessagesResponse[]
@@ -54,47 +45,11 @@ export interface TreeResponse {
   raw_response?: string
 }
 
-export interface MessageCreateRequest {
-  tree_id: number
-  parent_id: number | null
-  content: string
-  role: string
-}
-
 export interface MessageCreateResponse {
   id: number
   content: string
-  role: string
+  role: MessageRole
   selected: boolean
   simulation_id: number
   parent_id: number | null
-}
-
-export interface ContinueConversationRequest {
-  case_id: number
-  tree_id: number | null
-  simulation_goal: string
-}
-
-// Simulation metadata
-export interface SimulationMetadata {
-  id: number
-  headline: string
-  brief: string
-  created_at: string
-  node_count: number
-}
-
-// Loading states
-export interface ScenarioLoadingState {
-  isLoadingTree: boolean
-  isGeneratingResponses: boolean
-  error: string | null
-}
-
-// URL parameters
-export interface ScenarioSearchParams {
-  caseId: number
-  simulationId: number
-  messageId?: number
 }

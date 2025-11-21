@@ -1,16 +1,12 @@
 import { createRootRoute, Outlet } from "@tanstack/react-router"
-
-import NotFound from "@/components/Common/NotFound"
 import Header from "@/components/Common/Header"
+import NotFound from "@/components/Common/NotFound"
 
 export const Route = createRootRoute({
   component: () => (
     <>
       <Header />
       <Outlet />
-      {/* <Suspense>
-        <TanStackDevtools />
-      </Suspense> */}
     </>
   ),
   notFoundComponent: () => <NotFound />,

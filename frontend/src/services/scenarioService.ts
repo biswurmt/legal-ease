@@ -2,9 +2,9 @@
 // Uses generated API client and environment variables
 
 import type {
+  MessageCreateResponse,
   TreeMessagesResponse,
   TreeResponse,
-  MessageCreateResponse,
 } from "@/types/scenario"
 import { DefaultService } from "../client"
 
@@ -18,9 +18,9 @@ const API_BASE = `${import.meta.env.VITE_API_URL}/api/v1`
  * @throws Error if simulation not found or network error
  */
 export async function loadSimulationTree(
-  simulationId: number
+  simulationId: number,
 ): Promise<TreeMessagesResponse[]> {
-  return await DefaultService.getTreeMessagesEndpoint({ simulationId }) as any
+  return (await DefaultService.getTreeMessagesEndpoint({ simulationId })) as any
 }
 
 /**
@@ -36,7 +36,7 @@ export async function continueConversation(
   caseId: number,
   messageId: number,
   treeId: number,
-  refresh: boolean = false
+  refresh: boolean = false,
 ): Promise<TreeResponse> {
   // Note: Generated client types don't include message_id and refresh yet
   // Using fetch directly until OpenAPI spec is updated
@@ -76,7 +76,7 @@ export async function createCustomMessage(
   simulationId: number,
   parentId: number | null,
   content: string,
-  role: string = "user"
+  role: string = "user",
 ): Promise<MessageCreateResponse> {
   // Note: Using fetch directly because the generated client doesn't match the summarized endpoint
   const response = await fetch(`${API_BASE}/messages/create-summarized`, {
@@ -101,43 +101,20 @@ export async function createCustomMessage(
 }
 
 /**
- * Mark a message as selected in the conversation path
- * @param messageId - The message ID to select
- * @throws Error if selection fails
- */
-export async function selectMessage(messageId: number): Promise<void> {
-  await DefaultService.selectMessage({ messageId })
-}
-
-/**
- * Get children messages for a specific message
- * @param messageId - Parent message ID
- * @returns Array of child messages
- * @throws Error if fetch fails
- */
-export async function getMessageChildren(messageId: number): Promise<any[]> {
-  return await DefaultService.getChildren({ messageId })
-}
-
-/**
- * Delete messages after a specific point (for regeneration)
- * @param messageId - Message ID to trim after
- * @throws Error if deletion fails
- */
-export async function trimMessagesAfter(messageId: number): Promise<void> {
-  await DefaultService.trimMessagesAfterChildren({ messageId })
-}
-
-/**
  * Get audio for a conversation tree
  * @param simulationId - The simulation ID
  * @param messageId - The end message ID
  * @returns Audio file response
  * @throws Error if audio generation fails
  */
-export async function getConversationAudio(simulationId: number, messageId: number): Promise<Blob> {
+export async function getConversationAudio(
+  simulationId: number,
+  messageId: number,
+): Promise<Blob> {
   // Note: Using fetch directly because generated client doesn't accept endMessageId parameter
-  const response = await fetch(`${API_BASE}/get-conversation-audio/${simulationId}?end_message_id=${messageId}`)
+  const response = await fetch(
+    `${API_BASE}/get-conversation-audio/${simulationId}?end_message_id=${messageId}`,
+  )
 
   if (!response.ok) {
     throw new Error(`Failed to get conversation audio: ${response.statusText}`)
@@ -192,7 +169,7 @@ export async function getSimulation(simulationId: number): Promise<{
 export async function createBookmark(
   simulationId: number,
   messageId: number,
-  name: string
+  name: string,
 ): Promise<{
   id: number
   simulation_id: number
